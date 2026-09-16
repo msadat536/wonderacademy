@@ -7,7 +7,9 @@
   var APP_NAME = CFG.APP_NAME || 'Wonder Academy';
   var CONTENT = window.CONTENT || {};
   var AUTH = window.WA_AUTH;
-  var CAT_ORDER = ['science', 'islamic-history', 'geography', 'analytical', 'reasoning', 'iq', 'physics', 'biology'];
+  var CAT_ORDER = ['science', 'islamic-history', 'story-time', 'math', 'physics', 'biology', 'geography', 'inventors', 'character', 'analytical', 'reasoning', 'iq'];
+  var VOICE_KEY = 'wonder_voice_v1';
+  var UI_KEY = 'wonder_ui_v1';
   var AVATARS = ['🦁', '🐼', '🦄', '🐯', '🚀', '🌸', '🐬', '🦖', '🐱', '⚽', '🎨', '🌟'];
   var CACHE_KEY = 'wonder_academy_cache_v2';
 
@@ -18,7 +20,7 @@
       var raw = localStorage.getItem(CACHE_KEY + ':' + userId);
       if (raw) { return JSON.parse(raw); }
     } catch (e) {}
-    return { profiles: [], progress: [] };
+    return { profiles: [], progress: [], ledger: [] };
   }
 
   function saveCache(userId, data) {
@@ -51,36 +53,62 @@
   /* ---------------- data ---------------- */
 
   function loadEverything(userId, cb) {
-    var out = { profiles: [], progress: [], pinHash: null, loaded: false };
-    AUTH.api('parent_settings?select=pin_hash', 'GET', null, null, function (e1, rows) {
+    var out = { profiles: [], progress: [], ledger: [], settings: null, loaded: false };
+    AUTH.api('parent_settings?select=*', 'GET', null, null, function (e1, rows) {
       if (e1 && e1.status === 401) { cb('signedout', null); return; }
-      if (!e1 && rows && rows[0]) { out.pinHash = rows[0].pin_hash; }
+      if (!e1 && rows && rows[0]) { out.settings = rows[0]; }
       AUTH.api('kid_profiles?select=*&order=created_at', 'GET', null, null, function (e2, profs) {
         if (e2 && e2.status === 401) { cb('signedout', null); return; }
         AUTH.api('kid_progress?select=*', 'GET', null, null, function (e3, rows2) {
           if (e3 && e3.status === 401) { cb('signedout', null); return; }
-          if (e2 || e3) {
-            var cached = loadCache(userId);
-            out.profiles = cached.profiles;
-            out.progress = cached.progress;
-            cb(null, out, true);
-            return;
-          }
-          out.profiles = profs || [];
-          out.progress = rows2 || [];
-          out.loaded = true;
-          saveCache(userId, { profiles: out.profiles, progress: out.progress });
-          cb(null, out, false);
+          AUTH.api('kid_ledger?select=*&order=created_at.desc', 'GET', null, null, function (e4, rows3) {
+            if (e2 || e3) {
+              var cached = loadCache(userId);
+              out.profiles = cached.profiles; out.progress = cached.progress; out.ledger = cached.ledger || [];
+              cb(null, out, true);
+              return;
+            }
+            out.profiles = profs || [];
+            out.progress = rows2 || [];
+            out.ledger = (!e4 && rows3) ? rows3 : (loadCache(userId).ledger || []);
+            out.loaded = true;
+            saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger });
+            cb(null, out, false);
+          });
         });
       });
     });
   }
 
-  function savePin(userId, pinHash, cb) {
-    AUTH.api('parent_settings?on_conflict=owner_id', 'POST',
-      { owner_id: userId, pin_hash: pinHash },
-      { 'Prefer': 'resolution=merge-duplicates' }, cb);
+  function saveSettings(userId, patch, cb) {
+    var body = { owner_id: userId }, k;
+    for (k in patch) { body[k] = patch[k]; }
+    AUTH.api('parent_settings?on_conflict=owner_id', 'POST', body,
+      { 'Prefer': 'resolution=merge-duplicates,return=representation' }, cb);
   }
+
+  function addLedger(userId, row, cb) {
+    AUTH.api('kid_ledger', 'POST',
+      { owner_id: userId, profile_id: row.profile_id, kind: row.kind, amount_cents: row.amount_cents, note: row.note },
+      { 'Prefer': 'return=representation' },
+      function (err, out) {
+        if (!err && out && out[0]) { cb(null, out[0]); }
+        else { cb(err || { message: 'Could not save' }, null); }
+      });
+  }
+
+  function money(cents, cur) {
+    var neg = cents < 0; var v = Math.abs(cents);
+    return (neg ? '-' : '') + (cur || '$') + (v / 100).toFixed(2);
+  }
+
+  function balanceOf(ledger, pid) {
+    var s = 0;
+    ledger.forEach(function (r) { if (r.profile_id === pid) { s += (r.amount_cents || 0); } });
+    return s;
+  }
+
+  function savePin(userId, pinHash, cb) { saveSettings(userId, { pin_hash: pinHash }, cb); }
 
   function createProfile(userId, p, cb) {
     AUTH.api('kid_profiles', 'POST',
@@ -254,19 +282,74 @@
 
   /* ---------------- speech ---------------- */
 
+  function getVoicePref() {
+    var d = { name: '', rate: 0.95, pitch: 1.05, autoRead: 'young' };
+    try { var r = localStorage.getItem(VOICE_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
+    return d;
+  }
+  function setVoicePref(p) { try { localStorage.setItem(VOICE_KEY, JSON.stringify(p)); } catch (e) {} }
+
+  function getUiPref() {
+    var d = { textSize: 'normal' };
+    try { var r = localStorage.getItem(UI_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
+    return d;
+  }
+  function setUiPref(p) { try { localStorage.setItem(UI_KEY, JSON.stringify(p)); } catch (e) {} applyUiPref(); }
+  function applyUiPref() {
+    var p = getUiPref();
+    document.body.className = 'text-' + (p.textSize || 'normal');
+  }
+
+  function listVoices() {
+    if (!window.speechSynthesis) { return []; }
+    return window.speechSynthesis.getVoices() || [];
+  }
+
+  function pickVoice(pref) {
+    var vs = listVoices(), i;
+    if (pref.name) { for (i = 0; i < vs.length; i++) { if (vs[i].name === pref.name) { return vs[i]; } } }
+    for (i = 0; i < vs.length; i++) { if (vs[i].lang && vs[i].lang.indexOf('en') === 0 && vs[i].localService) { return vs[i]; } }
+    for (i = 0; i < vs.length; i++) { if (vs[i].lang && vs[i].lang.indexOf('en') === 0) { return vs[i]; } }
+    return null;
+  }
+
+  function pronounce(text) {
+    var rules = window.PRONOUNCE || [], out = String(text || ''), i;
+    for (i = 0; i < rules.length; i++) { out = out.replace(rules[i][0], rules[i][1]); }
+    return out;
+  }
+
+  var speakToken = 0;
+
   function speak(text, onEnd) {
     if (!window.speechSynthesis) { if (onEnd) { onEnd(); } return; }
     window.speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.95; u.pitch = 1.05;
-    var voices = window.speechSynthesis.getVoices(), i;
-    for (i = 0; i < voices.length; i++) {
-      if (voices[i].lang && voices[i].lang.indexOf('en') === 0) { u.voice = voices[i]; break; }
+    var token = ++speakToken;
+    var pref = getVoicePref();
+    var voice = pickVoice(pref);
+    var clean = pronounce(text);
+    var parts = clean.match(/[^.!?]+[.!?]+["')]?\s*|[^.!?]+$/g) || [clean];
+    var idx = 0;
+    function next() {
+      if (token !== speakToken) { return; }
+      if (idx >= parts.length) { if (onEnd) { onEnd(); } return; }
+      var piece = parts[idx++].trim();
+      if (!piece) { next(); return; }
+      var u = new SpeechSynthesisUtterance(piece);
+      u.rate = pref.rate || 0.95; u.pitch = pref.pitch || 1.05;
+      if (voice) { u.voice = voice; u.lang = voice.lang; }
+      u.onend = function () { setTimeout(next, 120); };
+      u.onerror = function () { setTimeout(next, 50); };
+      window.speechSynthesis.speak(u);
     }
-    if (onEnd) { u.onend = onEnd; }
-    window.speechSynthesis.speak(u);
+    next();
   }
-  function stopSpeak() { if (window.speechSynthesis) { window.speechSynthesis.cancel(); } }
+  function stopSpeak() { speakToken++; if (window.speechSynthesis) { window.speechSynthesis.cancel(); } }
+
+  function shouldAutoRead(tier) {
+    var a = getVoicePref().autoRead || 'young';
+    return a === 'all' || (a === 'young' && tier === 'young');
+  }
 
   function shuffle(arr) {
     var a = arr.slice(), i, j, t;
@@ -288,9 +371,10 @@
 
   function App() {
     var st = React.useState({
-      screen: 'loading', data: { profiles: [], progress: [] },
-      pinHash: null, session: null, offline: false, notice: ''
+      screen: 'loading', data: { profiles: [], progress: [], ledger: [] },
+      pinHash: null, settings: {}, session: null, offline: false, notice: ''
     });
+    React.useEffect(function () { applyUiPref(); }, []);
     var state = st[0], setState = st[1];
     var pidSt = React.useState(null);
     var pid = pidSt[0], setPid = pidSt[1];
@@ -325,10 +409,11 @@
           update({ screen: 'login', session: null, notice: 'Please sign in again.' });
           return;
         }
-        var data = { profiles: out.profiles, progress: out.progress };
-        var next = out.pinHash ? (data.profiles.length ? 'profiles' : 'parent') : 'pinSetup';
+        var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [] };
+        var pinHash = out.settings ? out.settings.pin_hash : null;
+        var next = pinHash ? (data.profiles.length ? 'profiles' : 'parent') : 'pinSetup';
         setState({
-          screen: next, data: data, pinHash: out.pinHash,
+          screen: next, data: data, pinHash: pinHash, settings: out.settings || {},
           session: session, offline: !!offline, notice: ''
         });
       });
@@ -351,22 +436,43 @@
       AUTH.signOut();
       setPid(null);
       setState({
-        screen: 'login', data: { profiles: [], progress: [] },
-        pinHash: null, session: null, offline: false, notice: ''
+        screen: 'login', data: { profiles: [], progress: [], ledger: [] },
+        pinHash: null, settings: {}, session: null, offline: false, notice: ''
       });
     }
 
     function onPinCreated(hash) {
       savePin(state.session.user_id, hash, function (err) {
         if (err) { update({ notice: 'Could not save the PIN. Check your connection.' }); return; }
-        update({ pinHash: hash, screen: 'parent', notice: '' });
+        var st2 = {}, k; for (k in state.settings) { st2[k] = state.settings[k]; } st2.pin_hash = hash;
+        update({ pinHash: hash, settings: st2, screen: 'parent', notice: '' });
+      });
+    }
+
+    function onSaveRates(patch, done) {
+      saveSettings(state.session.user_id, patch, function (err, out) {
+        if (err) { done('Could not save. Check your connection.'); return; }
+        var st2 = {}, k; for (k in state.settings) { st2[k] = state.settings[k]; }
+        for (k in patch) { st2[k] = patch[k]; }
+        update({ settings: st2 });
+        done(null);
+      });
+    }
+
+    function onLedger(row, done) {
+      addLedger(state.session.user_id, row, function (err, saved) {
+        if (err) { done('Could not save. Check your connection.'); return; }
+        var next = { profiles: state.data.profiles, progress: state.data.progress, ledger: [saved].concat(state.data.ledger) };
+        saveCache(state.session.user_id, next);
+        update({ data: next });
+        done(null);
       });
     }
 
     function onAddProfile(name, age, avatar, done) {
       createProfile(state.session.user_id, { name: name, age: age, avatar: avatar }, function (err, saved) {
         if (err) { done('Could not save. Check your connection.'); return; }
-        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress };
+        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress, ledger: state.data.ledger };
         saveCache(state.session.user_id, next);
         update({ data: next });
         done(null);
@@ -378,7 +484,8 @@
         if (err) { update({ notice: 'Could not remove that profile.' }); return; }
         var next = {
           profiles: state.data.profiles.filter(function (p) { return p.id !== id; }),
-          progress: state.data.progress.filter(function (r) { return r.profile_id !== id; })
+          progress: state.data.progress.filter(function (r) { return r.profile_id !== id; }),
+          ledger: state.data.ledger.filter(function (r) { return r.profile_id !== id; })
         };
         saveCache(state.session.user_id, next);
         update({ data: next, notice: '' });
@@ -386,22 +493,58 @@
     }
 
     function recordResult(catId, conceptId, cycle, correct) {
+      var cat = CONTENT[catId];
+      var con = null, i, r;
+      for (i = 0; i < cat.concepts.length; i++) { if (cat.concepts[i].id === conceptId) { con = cat.concepts[i]; } }
+      var okFn = hasContentFor(state.data, pid, cat);
+      var playableCount = cat.concepts.filter(okFn).length;
+      var rowsBefore = catRows(state.data, pid, catId);
+      var cycleBefore = currentCycle(rowsBefore, playableCount);
+
       var rows = state.data.progress.slice();
-      var found = null, i, r;
+      var found = null, prevStars = 0, prevBest = 0;
       for (i = 0; i < rows.length; i++) {
         r = rows[i];
         if (r.profile_id === pid && r.category === catId && r.concept_id === conceptId && r.cycle === cycle) { found = r; }
       }
       if (found) {
+        prevStars = found.stars; prevBest = found.best_score;
         found.best_score = Math.max(found.best_score, correct);
         found.stars = Math.max(found.stars, correct);
       } else {
         found = { profile_id: pid, category: catId, concept_id: conceptId, cycle: cycle, best_score: correct, stars: correct };
         rows.push(found);
       }
-      var next = { profiles: state.data.profiles, progress: rows };
+      var next = { profiles: state.data.profiles, progress: rows, ledger: state.data.ledger };
       saveCache(state.session.user_id, next);
       persistProgress(state.session.user_id, found);
+
+      /* money: only NEW stars, badges and trophies earn */
+      var st = state.settings || {};
+      var starC = st.star_cents || 0, badgeC = st.badge_cents || 0, trophyC = st.trophy_cents || 0;
+      var newStars = Math.max(0, correct - prevStars);
+      var newBadge = prevBest < 8 && correct >= 8;
+      var cycleAfter = currentCycle(catRows(next, pid, catId), playableCount);
+      var newTrophy = cycleAfter > cycleBefore;
+      var earned = newStars * starC + (newBadge ? badgeC : 0) + (newTrophy ? trophyC : 0);
+      window.__lastEarned = earned;
+      window.__lastTrophy = newTrophy;
+      if (earned > 0) {
+        var note = cat.title + ': ' + con.title + ' ' + correct + '/10' +
+          (newStars ? ', ' + newStars + ' new star' + (newStars > 1 ? 's' : '') : '') +
+          (newBadge ? ', badge' : '') + (newTrophy ? ', trophy' : '');
+        var localRow = { id: 'local-' + Date.now(), profile_id: pid, kind: 'earn', amount_cents: earned, note: note, created_at: new Date().toISOString() };
+        next.ledger = [localRow].concat(state.data.ledger);
+        addLedger(state.session.user_id, { profile_id: pid, kind: 'earn', amount_cents: earned, note: note }, function (err, saved) {
+          if (!err && saved) {
+            setState(function (s2) {
+              var led = s2.data.ledger.map(function (x) { return x.id === localRow.id ? saved : x; });
+              var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, ledger: led };
+              var n2 = {}, k; for (k in s2) { n2[k] = s2[k]; } n2.data = d2; return n2;
+            });
+          }
+        });
+      }
       update({ data: next });
     }
 
@@ -427,8 +570,10 @@
     if (state.screen === 'parent') {
       return h(ParentScreen, {
         data: state.data, session: state.session, notice: state.notice, offline: state.offline,
+        settings: state.settings,
         onAdd: onAddProfile, onDelete: onDeleteProfile, onSignOut: handleSignOut,
         onPinChange: function (hash) { onPinCreated(hash); },
+        onSaveRates: onSaveRates, onLedger: onLedger,
         onDone: function () { go('profiles'); }
       });
     }
@@ -474,12 +619,12 @@
     } else if (state.screen === 'results') {
       shell.push(h(ResultsScreen, {
         key: 'res', data: state.data, pid: pid, profile: profile, catId: nav.catId, conceptId: nav.conceptId,
-        score: window.__lastScore || 0,
+        score: window.__lastScore || 0, earned: window.__lastEarned || 0, currency: (state.settings && state.settings.currency) || '$',
         onCategory: function () { go('category'); },
         onNext: function (nextId) { if (nextId) { go('concept', { conceptId: nextId }); } else { go('category'); } }
       }));
     } else if (state.screen === 'rewards') {
-      shell.push(h(RewardsScreen, { key: 'rw', data: state.data, pid: pid, profile: profile }));
+      shell.push(h(RewardsScreen, { key: 'rw', data: state.data, pid: pid, profile: profile, settings: state.settings }));
     }
 
     shell.push(h('div', { key: 'nav', className: 'bottomnav' },
@@ -631,32 +776,15 @@
   /* ---------------- parent area ---------------- */
 
   function ParentScreen(props) {
-    var showAddSt = React.useState(props.data.profiles.length === 0);
-    var showAdd = showAddSt[0], setShowAdd = showAddSt[1];
-    var nameSt = React.useState(''); var name = nameSt[0], setName = nameSt[1];
-    var ageSt = React.useState(null); var age = ageSt[0], setAge = ageSt[1];
-    var avSt = React.useState(AVATARS[0]); var avatar = avSt[0], setAvatar = avSt[1];
-    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
-    var errSt = React.useState(''); var err = errSt[0], setErr = errSt[1];
-    var confirmSt = React.useState(null); var confirmId = confirmSt[0], setConfirmId = confirmSt[1];
+    var tabSt = React.useState(props.data.profiles.length === 0 ? 'profiles' : 'profiles');
+    var tab = tabSt[0], setTab = tabSt[1];
     var pinModeSt = React.useState(false); var pinMode = pinModeSt[0], setPinMode = pinModeSt[1];
     var newPinSt = React.useState(''); var newPin = newPinSt[0], setNewPin = newPinSt[1];
-    var ages = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
     React.useEffect(function () {
       if (!pinMode || newPin.length !== 4) { return; }
       hashPin(newPin, function (hash) { props.onPinChange(hash); setPinMode(false); setNewPin(''); });
     }, [newPin, pinMode]);
-
-    function add() {
-      if (!name.trim() || !age || busy) { return; }
-      setBusy(true); setErr('');
-      props.onAdd(name.trim(), age, avatar, function (e) {
-        setBusy(false);
-        if (e) { setErr(e); return; }
-        setName(''); setAge(null); setAvatar(AVATARS[0]); setShowAdd(false);
-      });
-    }
 
     if (pinMode) {
       return h('div', { className: 'app center-wrap' },
@@ -668,6 +796,8 @@
       );
     }
 
+    var tabs = [['profiles', '👧 Profiles'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['account', '⚙️ Account']];
+
     return h('div', { className: 'app' },
       h('div', { className: 'backrow' },
         h('button', { className: 'btn plain small', onClick: props.onDone }, '← Done'),
@@ -675,14 +805,55 @@
       ),
       props.offline ? h('div', { className: 'sub', style: { color: '#C0392B' } }, 'Working offline. Changes may not save.') : null,
       props.notice ? h('div', { className: 'sub', style: { color: '#C0392B' } }, props.notice) : null,
+      h('div', { className: 'tabs' }, tabs.map(function (t) {
+        return h('button', { key: t[0], className: tab === t[0] ? 'on' : '', onClick: function () { setTab(t[0]); } }, t[1]);
+      })),
+      tab === 'profiles' ? h(ProfilesTab, props) : null,
+      tab === 'money' ? h(MoneyTab, props) : null,
+      tab === 'voice' ? h(VoiceTab, null) : null,
+      tab === 'account' ? h('div', null,
+        h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Account'),
+        h('div', { className: 'reward-cat' },
+          h('span', { className: 'em2' }, '📧'),
+          h('span', { className: 'fill' }, props.session ? props.session.email : '')
+        ),
+        h('div', { className: 'actionrow', style: { marginTop: '14px' } },
+          h('button', { className: 'btn grape small', onClick: function () { setPinMode(true); } }, 'Change PIN'),
+          h('button', { className: 'btn plain small', onClick: props.onSignOut }, 'Sign out')
+        )
+      ) : null
+    );
+  }
 
+  function ProfilesTab(props) {
+    var showAddSt = React.useState(props.data.profiles.length === 0);
+    var showAdd = showAddSt[0], setShowAdd = showAddSt[1];
+    var nameSt = React.useState(''); var name = nameSt[0], setName = nameSt[1];
+    var ageSt = React.useState(null); var age = ageSt[0], setAge = ageSt[1];
+    var avSt = React.useState(AVATARS[0]); var avatar = avSt[0], setAvatar = avSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var errSt = React.useState(''); var err = errSt[0], setErr = errSt[1];
+    var confirmSt = React.useState(null); var confirmId = confirmSt[0], setConfirmId = confirmSt[1];
+    var ages = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+    function add() {
+      if (!name.trim() || !age || busy) { return; }
+      setBusy(true); setErr('');
+      props.onAdd(name.trim(), age, avatar, function (e) {
+        setBusy(false);
+        if (e) { setErr(e); return; }
+        setName(''); setAge(null); setAvatar(AVATARS[0]); setShowAdd(false);
+      });
+    }
+
+    return h('div', null,
       h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Kid profiles'),
       props.data.profiles.length === 0
         ? h('div', { className: 'coming' }, 'No profiles yet. Add your first one below.')
         : h('div', null, props.data.profiles.map(function (p) {
             return h('div', { key: p.id, className: 'reward-cat' },
               h('span', { className: 'em2' }, p.avatar),
-              h('span', { className: 'fill' }, p.name + ' · age ' + p.age),
+              h('span', { className: 'fill' }, p.name + ' · age ' + p.age + ' · ⭐ ' + totalStars(props.data, p.id)),
               confirmId === p.id
                 ? h('span', { style: { display: 'flex', gap: '8px' } },
                     h('button', { className: 'btn small', style: { background: '#FFB3B3' }, onClick: function () { setConfirmId(null); props.onDelete(p.id); } }, 'Remove'),
@@ -690,15 +861,11 @@
                 : h('button', { className: 'btn plain small', onClick: function () { setConfirmId(p.id); } }, 'Remove')
             );
           })),
-
       showAdd
         ? h('div', { className: 'story-card', style: { marginTop: '16px' } },
             h('h2', null, 'Add a profile'),
             h('div', { style: { textAlign: 'center' } },
-              h('input', {
-                className: 'name-input', value: name, maxLength: 14, placeholder: 'Name',
-                onChange: function (e) { setName(e.target.value); }
-              }),
+              h('input', { className: 'name-input', value: name, maxLength: 14, placeholder: 'Name', onChange: function (e) { setName(e.target.value); } }),
               h('div', { className: 'sub', style: { marginTop: '14px' } }, 'Age'),
               h('div', { className: 'age-pick' }, ages.map(function (a) {
                 return h('button', { key: a, className: a === age ? 'sel' : '', onClick: function () { setAge(a); } }, a);
@@ -709,25 +876,159 @@
               })),
               err ? h('div', { className: 'sub', style: { color: '#C0392B' } }, err) : null,
               h('div', { className: 'actionrow' },
-                props.data.profiles.length > 0
-                  ? h('button', { className: 'btn plain', onClick: function () { setShowAdd(false); setErr(''); } }, 'Cancel') : null,
-                h('button', { className: 'btn green', disabled: !name.trim() || !age || busy, onClick: add },
-                  busy ? 'Saving...' : 'Save profile')
+                props.data.profiles.length > 0 ? h('button', { className: 'btn plain', onClick: function () { setShowAdd(false); setErr(''); } }, 'Cancel') : null,
+                h('button', { className: 'btn green', disabled: !name.trim() || !age || busy, onClick: add }, busy ? 'Saving...' : 'Save profile')
               ),
               h('div', { className: 'sub', style: { fontSize: '15px', opacity: .7, marginTop: '6px' } },
                 'Age 6 and under gets shorter stories and 3 choices. Age 7 and up gets 4 choices.')
             ))
         : h('div', { className: 'actionrow' },
-            h('button', { className: 'btn', onClick: function () { setShowAdd(true); } }, '➕ Add a profile')),
+            h('button', { className: 'btn', onClick: function () { setShowAdd(true); } }, '➕ Add a profile'))
+    );
+  }
 
-      h('h1', { style: { fontSize: '24px', margin: '26px 0 6px' } }, 'Account'),
-      h('div', { className: 'reward-cat' },
-        h('span', { className: 'em2' }, '📧'),
-        h('span', { className: 'fill' }, props.session ? props.session.email : '')
+  function MoneyTab(props) {
+    var st = props.settings || {};
+    var cur = st.currency || '$';
+    var starSt = React.useState(((st.star_cents || 0) / 100).toFixed(2)); var star = starSt[0], setStar = starSt[1];
+    var badgeSt = React.useState(((st.badge_cents || 0) / 100).toFixed(2)); var badge = badgeSt[0], setBadge = badgeSt[1];
+    var trophySt = React.useState(((st.trophy_cents || 0) / 100).toFixed(2)); var trophy = trophySt[0], setTrophy = trophySt[1];
+    var curSt = React.useState(cur); var curSym = curSt[0], setCurSym = curSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var kidSt = React.useState(props.data.profiles.length ? props.data.profiles[0].id : null); var kid = kidSt[0], setKid = kidSt[1];
+    var amtSt = React.useState(''); var amt = amtSt[0], setAmt = amtSt[1];
+    var noteSt = React.useState(''); var note = noteSt[0], setNote = noteSt[1];
+    var modeSt = React.useState('redeem'); var mode = modeSt[0], setMode = modeSt[1];
+
+    function toCents(v) { var n = parseFloat(v); return isNaN(n) ? 0 : Math.round(n * 100); }
+
+    function saveRates() {
+      setBusy(true); setMsg('');
+      props.onSaveRates({ star_cents: toCents(star), badge_cents: toCents(badge), trophy_cents: toCents(trophy), currency: curSym || '$' }, function (e) {
+        setBusy(false); setMsg(e || 'Saved.');
+      });
+    }
+
+    function submitLedger() {
+      var c = toCents(amt);
+      if (!kid || c <= 0) { setMsg('Enter an amount above zero.'); return; }
+      setBusy(true); setMsg('');
+      props.onLedger({ profile_id: kid, kind: mode, amount_cents: mode === 'redeem' ? -c : c, note: note.trim() || (mode === 'redeem' ? 'Redeemed' : 'Bonus') }, function (e) {
+        setBusy(false); setMsg(e || 'Saved.');
+        if (!e) { setAmt(''); setNote(''); }
+      });
+    }
+
+    var kidProfile = null, i;
+    for (i = 0; i < props.data.profiles.length; i++) { if (props.data.profiles[i].id === kid) { kidProfile = props.data.profiles[i]; } }
+    var hist = (props.data.ledger || []).filter(function (r) { return r.profile_id === kid; });
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Money rewards'),
+      h('div', { className: 'story-card' },
+        h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '8px' } }, 'How much each achievement earns. Only new stars count, so replaying a lesson cannot farm money.'),
+        h('div', { className: 'rate-row' }, h('span', null, 'Currency symbol'), h('input', { className: 'rate-input', value: curSym, maxLength: 3, onChange: function (e) { setCurSym(e.target.value); } })),
+        h('div', { className: 'rate-row' }, h('span', null, '⭐ Per new star'), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: star, onChange: function (e) { setStar(e.target.value); } })),
+        h('div', { className: 'rate-row' }, h('span', null, '🏅 Per Smarty Badge (8+/10)'), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: badge, onChange: function (e) { setBadge(e.target.value); } })),
+        h('div', { className: 'rate-row' }, h('span', null, '🏆 Per Trophy (category round)'), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: trophy, onChange: function (e) { setTrophy(e.target.value); } })),
+        h('div', { className: 'actionrow' }, h('button', { className: 'btn green small', disabled: busy, onClick: saveRates }, 'Save rates'))
       ),
-      h('div', { className: 'actionrow', style: { marginTop: '14px' } },
-        h('button', { className: 'btn grape small', onClick: function () { setPinMode(true); } }, 'Change PIN'),
-        h('button', { className: 'btn plain small', onClick: props.onSignOut }, 'Sign out')
+
+      props.data.profiles.length ? h('div', { className: 'story-card', style: { marginTop: '16px' } },
+        h('h2', null, 'Wallets'),
+        h('div', { className: 'tabs small' }, props.data.profiles.map(function (p) {
+          return h('button', { key: p.id, className: kid === p.id ? 'on' : '', onClick: function () { setKid(p.id); } },
+            p.avatar + ' ' + p.name + ' · ' + money(balanceOf(props.data.ledger || [], p.id), cur));
+        })),
+        kidProfile ? h('div', null,
+          h('div', { className: 'wallet', style: { marginTop: '10px' } },
+            h('div', { className: 'wallet-lbl' }, kidProfile.avatar + ' ' + kidProfile.name),
+            h('div', { className: 'wallet-amt' }, money(balanceOf(props.data.ledger || [], kid), cur))),
+          h('div', { className: 'tabs small', style: { marginTop: '12px' } },
+            h('button', { className: mode === 'redeem' ? 'on' : '', onClick: function () { setMode('redeem'); } }, '🎁 Redeem (spend)'),
+            h('button', { className: mode === 'bonus' ? 'on' : '', onClick: function () { setMode('bonus'); } }, '🎉 Bonus (add)')),
+          h('div', { className: 'rate-row' }, h('span', null, 'Amount ' + cur), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: amt, placeholder: '0.00', onChange: function (e) { setAmt(e.target.value); } })),
+          h('input', { className: 'name-input', style: { width: '100%', marginTop: '8px', fontSize: '17px' }, value: note, maxLength: 60, placeholder: mode === 'redeem' ? 'What did they get? e.g. Lego set' : 'Why? e.g. Helped tidy up', onChange: function (e) { setNote(e.target.value); } }),
+          h('div', { className: 'actionrow' },
+            h('button', { className: 'btn ' + (mode === 'redeem' ? 'grape' : 'green') + ' small', disabled: busy, onClick: submitLedger }, mode === 'redeem' ? 'Record redemption' : 'Add bonus')),
+          h('h2', { style: { fontSize: '18px', margin: '18px 0 6px' } }, 'History (' + hist.length + ')'),
+          hist.length === 0 ? h('div', { className: 'sub' }, 'Nothing yet.') :
+            hist.map(function (r) {
+              var d = r.created_at ? new Date(r.created_at) : null;
+              return h('div', { key: r.id, className: 'ledger-row ' + r.kind },
+                h('span', { className: 'em2' }, r.kind === 'earn' ? '⭐' : (r.kind === 'redeem' ? '🎁' : '🎉')),
+                h('span', { className: 'fill' }, (r.note || r.kind),
+                  h('div', { className: 'when' }, d ? d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')),
+                h('span', { className: 'amt' }, (r.amount_cents > 0 ? '+' : '') + money(r.amount_cents, cur))
+              );
+            })
+        ) : null
+      ) : null,
+      msg ? h('div', { className: 'sub', style: { marginTop: '10px' } }, msg) : null
+    );
+  }
+
+  function VoiceTab() {
+    var prefSt = React.useState(getVoicePref()); var pref = prefSt[0], setPref = prefSt[1];
+    var uiSt = React.useState(getUiPref()); var ui = uiSt[0], setUi = uiSt[1];
+    var voicesSt = React.useState(listVoices()); var voices = voicesSt[0], setVoices = voicesSt[1];
+
+    React.useEffect(function () {
+      if (!window.speechSynthesis) { return; }
+      function refresh() { setVoices(listVoices()); }
+      window.speechSynthesis.addEventListener('voiceschanged', refresh);
+      refresh();
+      return function () { window.speechSynthesis.removeEventListener('voiceschanged', refresh); };
+    }, []);
+
+    function setP(k, v) {
+      var n = {}, key; for (key in pref) { n[key] = pref[key]; } n[k] = v;
+      setPref(n); setVoicePref(n);
+    }
+    function setU(k, v) {
+      var n = {}, key; for (key in ui) { n[key] = ui[key]; } n[k] = v;
+      setUi(n); setUiPref(n);
+    }
+
+    var en = voices.filter(function (v) { return v.lang && v.lang.indexOf('en') === 0; });
+    var others = voices.filter(function (v) { return !(v.lang && v.lang.indexOf('en') === 0); });
+    function label(v) { return v.name + ' (' + v.lang + (v.localService ? '' : ', online') + ')'; }
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Narrator'),
+      h('div', { className: 'story-card' },
+        h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '6px' } }, 'Voices come from this device, so the list differs between the iPad and the phones. Set it once on each.'),
+        voices.length === 0
+          ? h('div', { className: 'sub' }, 'No voices found yet. Tap Test, then come back.')
+          : h('select', { className: 'select', value: pref.name, onChange: function (e) { setP('name', e.target.value); } },
+              [h('option', { key: 'auto', value: '' }, 'Automatic (best English voice)')]
+              .concat(en.map(function (v) { return h('option', { key: v.name, value: v.name }, label(v)); }))
+              .concat(others.length ? [h('option', { key: 'sep', disabled: true }, '── Other languages ──')] : [])
+              .concat(others.map(function (v) { return h('option', { key: v.name, value: v.name }, label(v)); }))
+            ),
+        h('div', { className: 'rate-row' }, h('span', null, 'Speed ' + Number(pref.rate).toFixed(2)),
+          h('input', { type: 'range', min: '0.6', max: '1.4', step: '0.05', value: pref.rate, onChange: function (e) { setP('rate', parseFloat(e.target.value)); } })),
+        h('div', { className: 'rate-row' }, h('span', null, 'Pitch ' + Number(pref.pitch).toFixed(2)),
+          h('input', { type: 'range', min: '0.6', max: '1.6', step: '0.05', value: pref.pitch, onChange: function (e) { setP('pitch', parseFloat(e.target.value)); } })),
+        h('div', { className: 'rate-row' }, h('span', null, 'Read aloud automatically'),
+          h('select', { className: 'select', style: { width: 'auto' }, value: pref.autoRead, onChange: function (e) { setP('autoRead', e.target.value); } },
+            h('option', { value: 'young' }, 'Age 6 and under'),
+            h('option', { value: 'all' }, 'Every profile'),
+            h('option', { value: 'off' }, 'Only when tapped'))),
+        h('div', { className: 'actionrow' },
+          h('button', { className: 'btn grape small', onClick: function () {
+            speak('Bismillah. Hello ' + 'from Wonder Academy. Prophet Muhammad ﷺ was born in Makkah. Ibrahim (AS) built the Kaaba with Ismail (AS). Khadijah (RA) was the first Muslim.');
+          } }, '🔊 Test voice'),
+          h('button', { className: 'btn plain small', onClick: stopSpeak }, 'Stop'))
+      ),
+      h('h1', { style: { fontSize: '24px', margin: '20px 0 6px' } }, 'Text size'),
+      h('div', { className: 'story-card' },
+        h('div', { className: 'tabs small' },
+          h('button', { className: ui.textSize === 'normal' ? 'on' : '', onClick: function () { setU('textSize', 'normal'); } }, 'Normal'),
+          h('button', { className: ui.textSize === 'large' ? 'on' : '', onClick: function () { setU('textSize', 'large'); } }, 'Large'),
+          h('button', { className: ui.textSize === 'huge' ? 'on' : '', onClick: function () { setU('textSize', 'huge'); } }, 'Huge')),
+        h('div', { className: 'sub', style: { marginTop: '8px' } }, 'Saved on this device only.')
       )
     );
   }
@@ -845,24 +1146,46 @@
 
     var pageSt = React.useState(0); var page = pageSt[0], setPage = pageSt[1];
     var readSt = React.useState(false); var reading = readSt[0], setReading = readSt[1];
+    var readAllRef = React.useRef(shouldAutoRead(tier));
     var onExtras = extras && page === pages.length;
 
-    function readPage(p) {
-      if (p >= pages.length) { return; }
-      setReading(true);
-      speak(pages[p].text, function () { setReading(false); });
+    function textFor(p) {
+      if (p < pages.length) { return pages[p].text; }
+      var t = [];
+      if (body.funFact) { t.push((young ? 'Wow! ' : 'Did you know? ') + body.funFact); }
+      if (body.tryThis) { t.push('Try it at home. ' + body.tryThis); }
+      if (body.words && body.words.length) {
+        t.push('New words. ' + body.words.map(function (w) { return w.word + ' means ' + w.meaning; }).join(' '));
+      }
+      return t.join(' ');
     }
 
-    /* Little kids get the page read to them automatically. */
+    function readFrom(p) {
+      setReading(true);
+      speak(textFor(p), function () {
+        setReading(false);
+        if (readAllRef.current && p < last) {
+          sfx('page');
+          setPage(p + 1);
+        } else {
+          readAllRef.current = false;
+        }
+      });
+    }
+
     React.useEffect(function () {
-      if (young && !onExtras) { readPage(page); }
+      if (readAllRef.current) { readFrom(page); }
       return function () { stopSpeak(); };
     }, [page]);
 
-    React.useEffect(function () { return function () { stopSpeak(); }; }, []);
-
     function goPage(n) {
-      stopSpeak(); setReading(false); sfx('page'); setPage(n);
+      stopSpeak(); setReading(false); readAllRef.current = false; sfx('page'); setPage(n);
+    }
+
+    function toggleRead() {
+      if (reading) { stopSpeak(); setReading(false); readAllRef.current = false; return; }
+      readAllRef.current = true;
+      readFrom(page);
     }
 
     var content;
@@ -889,7 +1212,7 @@
       var p = pages[page];
       content = h('div', { key: 'p' + page, className: 'page-in' },
         h('div', { className: 'scene' + (young ? ' big' : ''), style: { background: cat.tint || '#fff' } }, p.art),
-        h('div', { className: 'story-card' },
+        h('div', { className: 'story-card' + (reading ? ' reading' : '') },
           h('h2', null, con.emoji + ' ' + con.title),
           h('p', { className: young ? 'big-text' : '' }, p.text)
         )
@@ -907,13 +1230,7 @@
       content,
       h('div', { className: 'actionrow' },
         page > 0 ? h('button', { className: 'btn plain', onClick: function () { goPage(page - 1); } }, '◀ Back') : null,
-        !onExtras ? h('button', {
-          className: 'btn grape',
-          onClick: function () {
-            if (reading) { stopSpeak(); setReading(false); }
-            else { readPage(page); }
-          }
-        }, reading ? '⏹ Stop' : '🔊 Read to me') : null,
+        h('button', { className: 'btn grape', onClick: toggleRead }, reading ? '⏹ Stop reading' : '🔊 Read to me'),
         page < last
           ? h('button', { className: 'btn', onClick: function () { goPage(page + 1); } }, young ? 'Next ▶' : 'Keep going ▶')
           : h('button', { className: 'btn green', onClick: function () { stopSpeak(); sfx('pop'); props.onQuiz(); } }, '🎯 Quiz time!')
@@ -949,6 +1266,14 @@
     var plan = plans[pos];
     var young = tier === 'young';
 
+    function readQuestion() {
+      speak(q.q + '. ' + plan.order.map(function (ri, di) { return 'Option ' + (di + 1) + ': ' + q.choices[ri]; }).join('. '));
+    }
+    React.useEffect(function () {
+      if (shouldAutoRead(tier)) { readQuestion(); }
+      return function () { stopSpeak(); };
+    }, [pos]);
+
     function choose(dispIdx) {
       if (picked !== null) { return; }
       var realIdx = plan.order[dispIdx];
@@ -956,7 +1281,7 @@
       setPicked({ dispIdx: dispIdx, correct: correct });
       setStreak(correct ? streak + 1 : 0);
       sfx(correct ? 'good' : 'bad');
-      if (young && window.speechSynthesis) { speak(correct ? 'Yes! Great job!' : 'Good try!'); }
+      if (shouldAutoRead(tier)) { speak(correct ? 'Yes! Great job!' : 'Good try! The answer was ' + q.choices[q.answer] + '.'); }
       setTimeout(function () {
         var nextAnswers = answers.concat([correct]);
         setAnswers(nextAnswers);
@@ -991,10 +1316,7 @@
         h('div', { className: 'mascot ' + (picked === null ? '' : (picked.correct ? 'happy' : 'oops')) },
           picked === null ? '🦉' : (picked.correct ? '🥳' : '🤔')),
         h('div', { className: 'q' + (young ? ' big-q' : '') }, q.q),
-        young ? h('button', {
-          className: 'btn plain small', style: { marginTop: '10px' },
-          onClick: function () { speak(q.q + '. ' + plan.order.map(function (ri) { return q.choices[ri]; }).join('. ')); }
-        }, '🔊 Read it') : null,
+        h('button', { className: 'btn plain small', style: { marginTop: '10px' }, onClick: readQuestion }, '🔊 Read it'),
         h('div', { className: 'choices' + (q.choices.length > 3 ? ' four' : '') },
           plan.order.map(function (realIdx, dispIdx) {
             var cls = 'choice';
@@ -1034,6 +1356,7 @@
       h('h1', null, s + ' out of 10!'),
       h('div', { className: 'result-stars' }, starStr),
       h('div', { className: 'sub' }, msg),
+      props.earned > 0 ? h('div', { className: 'money-pop' }, '💰 +' + money(props.earned, props.currency) + ' added to your wallet!') : null,
       cycleJustDone ? h('div', { className: 'sub' }, '🏆 WOW! You finished every adventure in ' + cat.title + '! A trophy is yours. A brand new round is open!') : null,
       h('div', { className: 'actionrow' },
         h('button', { className: 'btn plain', onClick: props.onCategory }, 'Back to map'),
@@ -1046,13 +1369,34 @@
     var stars = totalStars(props.data, props.pid);
     var badges = totalBadges(props.data, props.pid);
     var trophies = totalTrophies(props.data, props.pid);
+    var cur = (props.settings && props.settings.currency) || '$';
+    var bal = balanceOf(props.data.ledger || [], props.pid);
+    var hist = (props.data.ledger || []).filter(function (r) { return r.profile_id === props.pid; }).slice(0, 8);
+    var ratesOn = props.settings && (props.settings.star_cents || props.settings.badge_cents || props.settings.trophy_cents);
     return h('div', null,
       h('h1', { style: { textAlign: 'center', margin: '14px 0 6px', fontSize: '26px' } }, props.profile.avatar + ' ' + props.profile.name + "'s treasure"),
+      (ratesOn || bal !== 0) ? h('div', { className: 'wallet' },
+        h('div', { className: 'wallet-lbl' }, '💰 My wallet'),
+        h('div', { className: 'wallet-amt' }, money(bal, cur)),
+        h('div', { className: 'wallet-sub' },
+          (props.settings.star_cents ? money(props.settings.star_cents, cur) + ' per star' : '') +
+          (props.settings.badge_cents ? ' · ' + money(props.settings.badge_cents, cur) + ' per badge' : '') +
+          (props.settings.trophy_cents ? ' · ' + money(props.settings.trophy_cents, cur) + ' per trophy' : ''))
+      ) : null,
       h('div', { className: 'badge-row' },
         h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, '⭐ ' + stars), h('div', { className: 'lbl' }, 'Stars collected')),
         h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, '🏅 ' + badges), h('div', { className: 'lbl' }, 'Smarty badges')),
         h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, '🏆 ' + trophies), h('div', { className: 'lbl' }, 'Trophies'))
       ),
+      hist.length ? h('div', { style: { marginTop: '18px' } },
+        h('h2', { style: { fontSize: '20px', margin: '0 0 6px' } }, 'Recent'),
+        hist.map(function (r) {
+          return h('div', { key: r.id, className: 'ledger-row ' + r.kind },
+            h('span', { className: 'em2' }, r.kind === 'earn' ? '⭐' : (r.kind === 'redeem' ? '🎁' : '🎉')),
+            h('span', { className: 'fill' }, r.note || r.kind),
+            h('span', { className: 'amt' }, (r.amount_cents > 0 ? '+' : '') + money(r.amount_cents, cur))
+          );
+        })) : null,
       h('div', { style: { marginTop: '18px' } }, CAT_ORDER.map(function (catId) {
         var cat = CONTENT[catId];
         if (!cat) { return null; }

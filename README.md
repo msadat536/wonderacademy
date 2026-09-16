@@ -6,7 +6,7 @@ A learning app for kids with a real parent login, kid profiles, age-appropriate 
 
 - **Parent login** with a real email and password (Supabase Auth). Nobody reaches the app without signing in.
 - **Parent PIN** for the parent area, so kids who already have a signed-in tablet cannot add or delete profiles.
-- 8 categories, 30 concepts each, and every category is now playable. Science & Nature has all 30 written (first 10 in storybook format). The other 7 categories each have their first 3 concepts written in full storybook format, with the remaining 27 showing "coming soon" until later waves. 51 playable concepts and 1,020 questions so far.
+- 12 categories, 30 concepts each, and every category is playable. Science & Nature has all 30 written (first 10 in storybook format). The other 7 categories each have their first 3 concepts written in full storybook format, with the remaining 27 showing "coming soon" until later waves. 51 playable concepts and 1,020 questions so far.
 - **Storybook lessons.** Each concept is a set of illustrated pages the child taps through, not one block of text, ending with a "Did you know" fact, a hands-on "Try it at home" activity, and (older tier) a new-words list.
 - **Real age separation.** The two tiers are written separately, not shortened versions of each other. Age 6 and under: 4 pages of short repetitive sentences (about 90 words), big type, giant emoji art, 3-choice questions, and pages that read themselves aloud automatically. Age 7 and up: 6 pages of genuine depth (about 280 words) with real vocabulary, numbers, and explanations, plus 4-choice questions.
 - **Separate video slots per age**, so you can point a 4-year-old and an 8-year-old at different videos for the same topic.
@@ -59,6 +59,25 @@ The service worker uses a network-first strategy, so a fresh version is picked u
 
 Once a device has opened the app, lessons and quizzes keep working without internet. Progress saves locally and syncs to Supabase next time the device is online. Signing in for the first time does require a connection.
 
+
+## Money rewards
+
+Parent area > Rewards tab. Set how much a new star, a Smarty Badge, and a Trophy earn (for example 0.10, 0.50, 2.00). Only new achievements pay out, so replaying a lesson cannot farm money. Each child has a wallet shown on their My Rewards screen. When you buy them something, record it as a Redeem and the wallet counts down. You can also add a Bonus for anything outside the app. Every earn, bonus, and redemption is kept in a dated history per child, stored in Supabase.
+
+Existing Supabase projects need `supabase-update-2.sql` run once in the SQL Editor. Fresh projects get it from `supabase.sql`.
+
+## Narrator
+
+Parent area > Narrator tab. Pick any voice installed on that device (accent, gender), set speed and pitch, and choose when to read aloud automatically: for young profiles only, for everyone, or only when tapped. Read to me on a story reads every page through to the end, including the fun fact and new words, and only stops if you tap Stop. Voices differ by device, so set it on each tablet and phone.
+
+To add more voices: iPad Settings > Accessibility > Spoken Content > Voices. Android Settings > Accessibility > Text-to-speech output > Install voice data.
+
+Pronunciation of Islamic names and terms is handled by `pronounce.js`. Add a line there for any word the narrator still gets wrong.
+
+## Text size
+
+Parent area > Narrator tab > Text size: Normal, Large, or Huge. Saved per device.
+
 ## Adding and removing profiles
 
 Parent area, reached from the profile picker: tap **Parent area**, enter your PIN. There you can add profiles, remove them, change the PIN, and sign out. Removing a profile also deletes that child's progress.
@@ -85,7 +104,8 @@ Content ships in waves so each file stays reviewable:
 
 - Wave 1 (done): app, login, Science complete, first 10 in storybook format.
 - Wave 2 (done): first 3 concepts of all 7 remaining categories, so every tile is playable.
-- Wave 3: deepen each category from 3 concepts toward 30, and convert the last 20 Science concepts to storybook format.
+- Wave 3 (done): Islamic History complete at all 30 concepts, 600 questions.
+- Next waves: one category at a time to 30 concepts each, then the last 20 Science concepts converted to storybook format.
 - Next waves: Islamic History, Biology, Physics, Geography, Analytical, Reasoning, IQ.
 
 Each wave replaces one file in `content/`. Nothing else changes, and kids' progress is untouched.
@@ -117,6 +137,8 @@ The correct answer is always written first (`answer: 0`); the app shuffles the c
 |---|---|
 | `config.js` | Your Supabase URL and key, app name. The only file you edit. |
 | `auth.js` | Sign in, sign up, token refresh, authenticated requests. |
+| `pronounce.js` | Pronunciation rules for the narrator. Edit to add words. |
+| `supabase-update-2.sql` | Run once on an existing project to add the rewards ledger. |
 | `content/science.js` | Storybook pages, facts, activities, and questions for Science. |
 | `app.js` | All screens and game logic. |
 | `styles.css` | Look and feel. |

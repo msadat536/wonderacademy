@@ -345,3 +345,99 @@ body {
 
 /* Keep the bottom bar clear of the iPad home indicator */
 .bottomnav { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+/* ============================================================
+   Bigger phone text, wallet, parent tabs, narrator controls
+   ============================================================ */
+
+/* Phones were too small. Raise the floor everywhere below tablet size. */
+@media (max-width: 699px) {
+  body { font-size: 18px; }
+  .topbar .brand { font-size: 24px; }
+  .chip { font-size: 16px; padding: 6px 12px; }
+  .cat-tile .big { font-size: 46px; }
+  .cat-tile .name { font-size: 17px; }
+  .cat-tile .count { font-size: 14px; }
+  .scene { font-size: 60px; padding: 24px 8px; }
+  .scene.big { font-size: 74px; }
+  .story-card h2 { font-size: 24px; }
+  .story-card p { font-size: 20px; line-height: 1.6; }
+  .story-card p.big-text { font-size: 24px; line-height: 1.65; }
+  .fact-text { font-size: 19px; }
+  .fact-lbl { font-size: 19px; }
+  .question-card .q { font-size: 24px; }
+  .question-card .q.big-q { font-size: 27px; }
+  .choice { font-size: 20px; min-height: 66px; }
+  .btn { font-size: 20px; min-height: 56px; }
+  .btn.small { font-size: 17px; min-height: 46px; }
+  .bottomnav button { font-size: 17px; min-height: 52px; }
+  .step-label { font-size: 12px; }
+  .center-wrap h1 { font-size: 30px; }
+  .center-wrap .sub { font-size: 19px; }
+  .profile-card .pname { font-size: 22px; }
+  .badge-card .n { font-size: 32px; }
+  .reward-cat { font-size: 17px; }
+  .mascot { font-size: 48px; }
+}
+
+/* User-selectable text size, saved per device. Applies on top of everything. */
+body.text-large .app { zoom: 1.12; }
+body.text-huge .app { zoom: 1.25; }
+@supports not (zoom: 1) {
+  body.text-large .app { font-size: 112%; }
+  body.text-huge .app { font-size: 125%; }
+}
+
+/* Story card glows softly while the narrator is reading it */
+.story-card.reading { box-shadow: 5px 5px 0 #223A5E, 0 0 0 5px rgba(124,92,191,.25); }
+.app.themed .story-card.reading { box-shadow: 5px 5px 0 var(--cat), 0 0 0 5px rgba(124,92,191,.25); }
+
+/* Wallet */
+.wallet {
+  background: linear-gradient(160deg, #FFF6D8, #FFE49B);
+  border: 3px solid #223A5E; border-radius: 22px; box-shadow: 5px 5px 0 #223A5E;
+  padding: 16px 20px; text-align: center; margin-top: 14px;
+}
+.wallet-lbl { font-weight: 800; font-size: 18px; }
+.wallet-amt { font-weight: 800; font-size: 44px; line-height: 1.1; margin: 4px 0; }
+.wallet-sub { font-size: 14px; font-weight: 700; opacity: .75; }
+.money-pop {
+  display: inline-block; margin-top: 8px; font-weight: 800; font-size: 20px;
+  background: #FFE49B; border: 3px solid #223A5E; border-radius: 999px;
+  box-shadow: 3px 3px 0 #223A5E; padding: 6px 18px; animation: pop .5s ease;
+}
+.ledger-row {
+  display: flex; align-items: center; gap: 12px; background: #fff;
+  border: 3px solid #223A5E; border-radius: 16px; box-shadow: 3px 3px 0 #223A5E;
+  padding: 8px 12px; margin-top: 8px; font-weight: 700; font-size: 15px;
+}
+.ledger-row .fill { flex: 1; }
+.ledger-row .when { font-size: 12px; opacity: .6; font-weight: 700; }
+.ledger-row .amt { font-weight: 800; white-space: nowrap; }
+.ledger-row.earn .amt, .ledger-row.bonus .amt { color: #2E7D32; }
+.ledger-row.redeem { background: #F4EEFF; }
+.ledger-row.redeem .amt { color: #7C5CBF; }
+
+/* Parent tabs */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 4px; }
+.tabs button {
+  border: 3px solid #223A5E; border-radius: 14px; background: #fff; font-weight: 800;
+  font-size: 15px; padding: 8px 12px; box-shadow: 3px 3px 0 #223A5E; min-height: 44px;
+}
+.tabs button.on { background: #FFC93C; }
+.tabs.small button { font-size: 14px; padding: 6px 10px; min-height: 40px; box-shadow: 2px 2px 0 #223A5E; }
+
+/* Rate rows and inputs */
+.rate-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 2px dotted #cfe0f2; font-weight: 700; font-size: 16px; }
+.rate-row:last-of-type { border-bottom: 0; }
+.rate-row input[type=range] { flex: 1; max-width: 220px; accent-color: #7C5CBF; }
+.rate-input {
+  font-family: inherit; font-size: 18px; font-weight: 700; text-align: right;
+  border: 3px solid #223A5E; border-radius: 12px; padding: 6px 10px; width: 110px;
+  background: #fff; color: #223A5E; outline: none;
+}
+.select {
+  font-family: inherit; font-size: 16px; font-weight: 700; width: 100%;
+  border: 3px solid #223A5E; border-radius: 12px; padding: 8px 10px;
+  background: #fff; color: #223A5E; margin-top: 6px;
+}
