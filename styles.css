@@ -441,3 +441,36 @@ body.text-huge .app { zoom: 1.25; }
   border: 3px solid #223A5E; border-radius: 12px; padding: 8px 10px;
   background: #fff; color: #223A5E; margin-top: 6px;
 }
+
+
+/* ============================================================
+   Forced phone layout (when a phone reports a desktop viewport)
+   Overrides the tablet media queries with phone values.
+   ============================================================ */
+html.force-phone .app { max-width: 430px !important; padding: 10px 12px 96px !important; }
+html.force-phone .grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+html.force-phone .path-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 12px !important; }
+html.force-phone .choices, html.force-phone .choices.four { grid-template-columns: 1fr !important; gap: 12px !important; }
+html.force-phone .topbar .brand { font-size: 22px !important; }
+html.force-phone .chip { font-size: 15px !important; padding: 5px 11px !important; }
+html.force-phone .cat-tile { padding: 16px !important; }
+html.force-phone .cat-tile .big { font-size: 44px !important; }
+html.force-phone .cat-tile .name { font-size: 16px !important; }
+html.force-phone .scene { font-size: 56px !important; padding: 22px 8px !important; }
+html.force-phone .scene.big { font-size: 70px !important; }
+html.force-phone .story-card { padding: 15px 16px !important; }
+html.force-phone .story-card h2 { font-size: 23px !important; }
+html.force-phone .story-card p { font-size: 19px !important; }
+html.force-phone .story-card p.big-text { font-size: 23px !important; }
+html.force-phone .question-card { padding: 18px !important; }
+html.force-phone .question-card .q { font-size: 22px !important; }
+html.force-phone .question-card .q.big-q { font-size: 25px !important; }
+html.force-phone .choice { font-size: 19px !important; min-height: 62px !important; }
+html.force-phone .btn { font-size: 19px !important; padding: 12px 22px !important; min-height: 54px !important; }
+html.force-phone .btn.small { font-size: 16px !important; padding: 8px 14px !important; min-height: 44px !important; }
+html.force-phone .bottomnav button { font-size: 16px !important; padding: 8px 16px !important; }
+html.force-phone .mascot { font-size: 44px !important; }
+html.force-phone .fact-text { font-size: 18px !important; }
+html.force-phone .pinpad { max-width: 300px !important; }
+html.force-phone .pinpad button { font-size: 26px !important; padding: 16px 0 !important; }
+html.force-phone .wallet-amt { font-size: 40px !important; }

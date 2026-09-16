@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#EAF4FF">
 <title>Wonder Academy</title>
-<link rel="manifest" href="manifest.json?v=6">
+<link rel="manifest" href="manifest.json?v=7">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,32 +16,57 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=6">
+<script>
+/* Phone-layout guard. Some Android browsers (or Chrome with "Desktop site" on)
+   report a desktop-sized viewport on a phone, which shrinks everything.
+   Detect a phone-shaped touch screen with a wide viewport and force phone layout. */
+(function () {
+  var sw = screen.width, sh = screen.height;
+  var shortSide = Math.min(sw, sh), longSide = Math.max(sw, sh);
+  var touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  var phoneShape = (longSide / shortSide) >= 1.75;
+  if (!(touch && phoneShape && window.innerWidth >= 640)) { return; }
+  var target = 430;
+  var m = document.querySelector('meta[name=viewport]');
+  if (m) { m.setAttribute('content', 'width=' + target + ', initial-scale=1, maximum-scale=1, user-scalable=no'); }
+  function check() {
+    if (window.innerWidth >= 640) {
+      /* Viewport tag was ignored. Scale the whole page instead. */
+      var z = window.innerWidth / target;
+      document.documentElement.classList.add('force-phone');
+      document.documentElement.style.zoom = String(z);
+    }
+  }
+  window.requestAnimationFrame ? window.requestAnimationFrame(check) : setTimeout(check, 0);
+  setTimeout(check, 300);
+})();
+</script>
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="config.js?v=6"></script>
-<script src="auth.js?v=6"></script>
-<script src="pronounce.js?v=6"></script>
-<script src="content/science.js?v=6"></script>
-<script src="content/islamic-history.js?v=6"></script>
-<script src="content/geography.js?v=6"></script>
-<script src="content/analytical.js?v=6"></script>
-<script src="content/reasoning.js?v=6"></script>
-<script src="content/iq.js?v=6"></script>
-<script src="content/physics.js?v=6"></script>
-<script src="content/biology.js?v=6"></script>
-<script src="content/story-time.js?v=6"></script>
-<script src="content/math.js?v=6"></script>
-<script src="content/inventors.js?v=6"></script>
-<script src="content/character.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="auth.js?v=7"></script>
+<script src="pronounce.js?v=7"></script>
+<script src="content/science.js?v=7"></script>
+<script src="content/islamic-history.js?v=7"></script>
+<script src="content/geography.js?v=7"></script>
+<script src="content/analytical.js?v=7"></script>
+<script src="content/reasoning.js?v=7"></script>
+<script src="content/iq.js?v=7"></script>
+<script src="content/physics.js?v=7"></script>
+<script src="content/biology.js?v=7"></script>
+<script src="content/story-time.js?v=7"></script>
+<script src="content/math.js?v=7"></script>
+<script src="content/inventors.js?v=7"></script>
+<script src="content/character.js?v=7"></script>
+<script src="app.js?v=7"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('sw.js?v=6').catch(function () {});
+    navigator.serviceWorker.register('sw.js?v=7').catch(function () {});
   });
 }
 </script>
