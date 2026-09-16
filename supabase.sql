@@ -65,3 +65,8 @@ alter table kid_ledger enable row level security;
 drop policy if exists "own ledger" on kid_ledger;
 create policy "own ledger" on kid_ledger
   for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+-- Pronunciation overrides and video links (update 3)
+alter table parent_settings add column if not exists pron_overrides text not null default '{}';
+alter table parent_settings add column if not exists video_map text not null default '{}';
+alter table parent_settings add column if not exists honorific_mode text not null default 'full';

@@ -74,6 +74,21 @@ To add more voices: iPad Settings > Accessibility > Spoken Content > Voices. And
 
 Pronunciation of Islamic names and terms is handled by `pronounce.js`. Add a line there for any word the narrator still gets wrong.
 
+
+## Fixing pronunciation
+
+Parent area > Words tab. Every Islamic term is listed with a play button. Tap to hear it; if it sounds wrong, tap Fix, type a spelling that sounds right when read aloud, and save. Your spellings are stored on your account, so all devices use them.
+
+Spell by sound, not by Arabic transliteration. Doubling a vowel lengthens it (Madeenah beats Madinah). Avoid hyphens, since many voices read them as a pause.
+
+Honorifics after names can be set to full Arabic, the English meaning, or skipped entirely.
+
+Requires `supabase-update-3.sql` run once in the SQL Editor.
+
+## Adding videos
+
+Parent area > Videos tab. Choose a category, tap Find beside a lesson to open a YouTube search for that topic, copy a link, tap Add and paste it. The video appears on the last page of that story. Links save to your account and sync to every device, so no file editing is needed.
+
 ## Text size
 
 Parent area > Narrator tab > Text size: Normal, Large, or Huge. Saved per device.
@@ -105,6 +120,7 @@ Content ships in waves so each file stays reviewable:
 - Wave 1 (done): app, login, Science complete, first 10 in storybook format.
 - Wave 2 (done): first 3 concepts of all 7 remaining categories, so every tile is playable.
 - Wave 3 (done): Islamic History complete at all 30 concepts, 600 questions.
+- Wave 4 (done): Physics Fun complete at all 30 concepts, 600 questions.
 - Next waves: one category at a time to 30 concepts each, then the last 20 Science concepts converted to storybook format.
 - Next waves: Islamic History, Biology, Physics, Geography, Analytical, Reasoning, IQ.
 

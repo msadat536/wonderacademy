@@ -199,7 +199,14 @@
     return [{ art: (con.scene || [con.emoji]).join(' '), text: (b && b.story) || '' }];
   }
 
-  function videoFor(con, tier) {
+  var VIDEO_MAP = {};
+  function setVideoMap(m) { VIDEO_MAP = m || {}; }
+
+  function videoFor(con, tier, catId) {
+    var key = catId + '/' + con.id + '/' + tier;
+    var alt = catId + '/' + con.id + '/both';
+    if (VIDEO_MAP[key]) { return VIDEO_MAP[key]; }
+    if (VIDEO_MAP[alt]) { return VIDEO_MAP[alt]; }
     if (!con.video) { return null; }
     if (typeof con.video === 'string') { return con.video || null; }
     return con.video[tier] || con.video.both || null;
@@ -313,9 +320,28 @@
     return null;
   }
 
+  var PRON_KEY = 'wonder_pron_v1';
+  var _pronRules = null, _pronStamp = '';
+
+  function getPronSettings() {
+    var d = { overrides: {}, honorific: 'full' };
+    try { var r = localStorage.getItem(PRON_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
+    return d;
+  }
+  function setPronSettings(p) {
+    try { localStorage.setItem(PRON_KEY, JSON.stringify(p)); } catch (e) {}
+    _pronRules = null;
+  }
+
   function pronounce(text) {
-    var rules = window.PRONOUNCE || [], out = String(text || ''), i;
-    for (i = 0; i < rules.length; i++) { out = out.replace(rules[i][0], rules[i][1]); }
+    var ps = getPronSettings();
+    var stamp = ps.honorific + '|' + JSON.stringify(ps.overrides);
+    if (!_pronRules || _pronStamp !== stamp) {
+      _pronRules = window.buildPronounceRules ? window.buildPronounceRules(ps.overrides, ps.honorific) : [];
+      _pronStamp = stamp;
+    }
+    var out = String(text || ''), i;
+    for (i = 0; i < _pronRules.length; i++) { out = out.replace(_pronRules[i][0], _pronRules[i][1]); }
     return out;
   }
 
@@ -410,6 +436,14 @@
           return;
         }
         var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [] };
+        var st0 = out.settings || {};
+        try { setVideoMap(st0.video_map ? JSON.parse(st0.video_map) : {}); } catch (e) { setVideoMap({}); }
+        if (st0.pron_overrides || st0.honorific_mode) {
+          var cur = getPronSettings();
+          var ov = cur.overrides;
+          try { if (st0.pron_overrides) { ov = JSON.parse(st0.pron_overrides); } } catch (e2) {}
+          setPronSettings({ overrides: ov, honorific: st0.honorific_mode || cur.honorific });
+        }
         var pinHash = out.settings ? out.settings.pin_hash : null;
         var next = pinHash ? (data.profiles.length ? 'profiles' : 'parent') : 'pinSetup';
         setState({
@@ -796,7 +830,7 @@
       );
     }
 
-    var tabs = [['profiles', '👧 Profiles'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['account', '⚙️ Account']];
+    var tabs = [['profiles', '👧 Profiles'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['words', '🗣️ Words'], ['videos', '🎬 Videos'], ['account', '⚙️ Account']];
 
     return h('div', { className: 'app' },
       h('div', { className: 'backrow' },
@@ -811,6 +845,8 @@
       tab === 'profiles' ? h(ProfilesTab, props) : null,
       tab === 'money' ? h(MoneyTab, props) : null,
       tab === 'voice' ? h(VoiceTab, null) : null,
+      tab === 'words' ? h(WordsTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
+      tab === 'videos' ? h(VideosTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
       tab === 'account' ? h('div', null,
         h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Account'),
         h('div', { className: 'reward-cat' },
@@ -1134,6 +1170,146 @@
     );
   }
 
+  function WordsTab(props) {
+    var psSt = React.useState(getPronSettings()); var ps = psSt[0], setPs = psSt[1];
+    var qSt = React.useState(''); var q = qSt[0], setQ = qSt[1];
+    var editSt = React.useState(null); var edit = editSt[0], setEdit = editSt[1];
+    var valSt = React.useState(''); var val = valSt[0], setVal = valSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+
+    var table = window.PRONOUNCE_TABLE || [];
+
+    function persist(next) {
+      setPs(next); setPronSettings(next);
+      props.onSaveRates({ pron_overrides: JSON.stringify(next.overrides), honorific_mode: next.honorific }, function (e) {
+        setMsg(e || 'Saved. All your devices will use this.');
+      });
+    }
+
+    function saveWord(word) {
+      var next = { overrides: {}, honorific: ps.honorific }, k;
+      for (k in ps.overrides) { next.overrides[k] = ps.overrides[k]; }
+      if (val.trim()) { next.overrides[word] = val.trim(); } else { delete next.overrides[word]; }
+      persist(next);
+      setEdit(null); setVal('');
+    }
+
+    function setHon(mode) {
+      var next = { overrides: ps.overrides, honorific: mode };
+      persist(next);
+      stopSpeak();
+      speak('Prophet Muhammad \uFDFA taught his companions.');
+    }
+
+    var list = table.filter(function (t) {
+      return !q || t[0].toLowerCase().indexOf(q.toLowerCase()) !== -1;
+    });
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Words and pronunciation'),
+      h('div', { className: 'story-card' },
+        h('p', { style: { fontSize: '17px' } },
+          'Tap a word to hear how the narrator says it. If it sounds wrong, type a spelling that sounds right when read aloud and save it. Your spellings sync to every device.\n\nSpell by sound, not by Arabic. Doubling a vowel lengthens it, so Madeenah is usually better than Madinah. Avoid hyphens; many voices read them as a pause.'),
+        h('div', { className: 'rate-row' }, h('span', null, 'Honorifics after names'),
+          h('select', { className: 'select', style: { width: 'auto' }, value: ps.honorific, onChange: function (e) { setHon(e.target.value); } },
+            h('option', { value: 'full' }, 'Full Arabic'),
+            h('option', { value: 'short' }, 'English meaning'),
+            h('option', { value: 'off' }, 'Skip them'))),
+        h('div', { className: 'actionrow' },
+          h('button', { className: 'btn grape small', onClick: function () {
+            stopSpeak();
+            speak('Prophet Muhammad \uFDFA was born in Makkah. Khadijah (RA) believed him. Ibrahim (AS) built the Kaaba. The Quran teaches sabr.');
+          } }, '🔊 Hear a sample'),
+          h('button', { className: 'btn plain small', onClick: stopSpeak }, 'Stop'))
+      ),
+      h('input', { className: 'name-input', style: { width: '100%', marginTop: '14px', fontSize: '17px' },
+        value: q, placeholder: 'Search a word', onChange: function (e) { setQ(e.target.value); } }),
+      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
+      h('div', { style: { marginTop: '10px' } }, list.map(function (t) {
+        var word = t[0];
+        var spoken = ps.overrides[word] || t[1];
+        var mine = !!ps.overrides[word];
+        if (edit === word) {
+          return h('div', { key: word, className: 'voice-row sel' },
+            h('span', { className: 'fill' },
+              h('span', { className: 'vname' }, word),
+              h('input', { className: 'rate-input', style: { width: '100%', textAlign: 'left', marginTop: '6px' },
+                value: val, autoFocus: true, onChange: function (e) { setVal(e.target.value); } })),
+            h('button', { className: 'btn small grape', onClick: function () { stopSpeak(); speak(val || spoken); } }, '▶'),
+            h('button', { className: 'btn small green', onClick: function () { saveWord(word); } }, 'Save'),
+            h('button', { className: 'btn small plain', onClick: function () { setEdit(null); setVal(''); } }, '✕'));
+        }
+        return h('div', { key: word, className: 'voice-row' + (mine ? ' sel' : '') },
+          h('button', { className: 'vplay', onClick: function () { stopSpeak(); speak(spoken); } }, '▶'),
+          h('span', { className: 'fill' },
+            h('span', { className: 'vname' }, word),
+            h('span', { className: 'vmeta' }, 'says: ' + spoken + (mine ? ' · yours' : ''))),
+          h('button', { className: 'btn small plain', onClick: function () { setEdit(word); setVal(ps.overrides[word] || t[1]); } }, 'Fix'));
+      }))
+    );
+  }
+
+  function VideosTab(props) {
+    var mapSt = React.useState(function () {
+      try { return props.settings && props.settings.video_map ? JSON.parse(props.settings.video_map) : {}; } catch (e) { return {}; }
+    });
+    var map = mapSt[0], setMap = mapSt[1];
+    var catSt = React.useState(CAT_ORDER[0]); var catId = catSt[0], setCatId = catSt[1];
+    var editSt = React.useState(null); var edit = editSt[0], setEdit = editSt[1];
+    var valSt = React.useState(''); var val = valSt[0], setVal = valSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+
+    var cat = CONTENT[catId];
+
+    function save(key, url) {
+      var next = {}, k;
+      for (k in map) { next[k] = map[k]; }
+      if (url) { next[key] = url; } else { delete next[key]; }
+      setMap(next); setVideoMap(next);
+      props.onSaveRates({ video_map: JSON.stringify(next) }, function (e) { setMsg(e || 'Saved.'); });
+      setEdit(null); setVal('');
+    }
+
+    function searchUrl(con) {
+      return 'https://www.youtube.com/results?search_query=' +
+        encodeURIComponent(con.title + ' for kids ' + cat.title);
+    }
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Videos'),
+      h('div', { className: 'story-card' },
+        h('p', { style: { fontSize: '17px' } },
+          'Add a YouTube link to any lesson and it appears on the last page of that story. Links are saved to your account, so you only add them once and every device gets them.\n\nTap Find to open a YouTube search for that topic, copy the link, then tap Add and paste it.')),
+      h('select', { className: 'select', style: { marginTop: '12px' }, value: catId, onChange: function (e) { setCatId(e.target.value); } },
+        CAT_ORDER.map(function (id) {
+          return CONTENT[id] ? h('option', { key: id, value: id }, CONTENT[id].emoji + ' ' + CONTENT[id].title) : null;
+        })),
+      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
+      h('div', { style: { marginTop: '10px' } }, cat.concepts.map(function (con) {
+        var key = catId + '/' + con.id + '/both';
+        var have = map[key];
+        if (edit === key) {
+          return h('div', { key: con.id, className: 'voice-row sel' },
+            h('span', { className: 'fill' },
+              h('span', { className: 'vname' }, con.emoji + ' ' + con.title),
+              h('input', { className: 'rate-input', style: { width: '100%', textAlign: 'left', marginTop: '6px' },
+                value: val, autoFocus: true, placeholder: 'Paste YouTube link',
+                onChange: function (e) { setVal(e.target.value); } })),
+            h('button', { className: 'btn small green', onClick: function () { save(key, val.trim()); } }, 'Save'),
+            h('button', { className: 'btn small plain', onClick: function () { setEdit(null); setVal(''); } }, '✕'));
+        }
+        return h('div', { key: con.id, className: 'voice-row' + (have ? ' sel' : '') },
+          h('span', { className: 'fill' },
+            h('span', { className: 'vname' }, con.emoji + ' ' + con.title),
+            h('span', { className: 'vmeta' }, have ? '🎬 video added' : 'no video yet')),
+          h('a', { className: 'btn small plain', href: searchUrl(con), target: '_blank', rel: 'noopener' }, 'Find'),
+          h('button', { className: 'btn small ' + (have ? 'grape' : 'plain'), onClick: function () { setEdit(key); setVal(have || ''); } },
+            have ? 'Change' : 'Add'),
+          have ? h('button', { className: 'btn small plain', onClick: function () { save(key, ''); } }, '✕') : null);
+      }))
+    );
+  }
+
   /* ---------------- kid screens ---------------- */
 
   function TopBar(props) {
@@ -1233,6 +1409,34 @@
     );
   }
 
+  /* ---------------- animated scene ---------------- */
+
+  function AnimScene(props) {
+    var art = String(props.art || '');
+    var chars = art.match(/([\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u0023-\u0039]\u20E3|\S)/g) || [];
+    var pieces = [];
+    var buf = '', i;
+    for (i = 0; i < chars.length; i++) {
+      buf += chars[i];
+      if (chars[i] !== '\u200D' && (i + 1 >= chars.length || chars[i + 1] !== '\u200D')) {
+        if (buf.trim()) { pieces.push(buf); }
+        buf = '';
+      }
+    }
+    if (!pieces.length) { pieces = [art]; }
+
+    return h('div', { className: 'anim-scene' + (props.big ? ' big' : ''), style: { background: props.tint || '#fff' } },
+      h('div', { className: 'as-sky' }),
+      h('div', { className: 'as-ground', style: { background: props.color || '#3FA34D' } }),
+      h('div', { className: 'as-sparkles' }, [0, 1, 2, 3, 4, 5].map(function (n) {
+        return h('span', { key: n, className: 'as-spark s' + n });
+      })),
+      h('div', { className: 'as-stage' }, pieces.map(function (p, idx) {
+        return h('span', { key: idx, className: 'as-item i' + (idx % 4) }, p);
+      }))
+    );
+  }
+
   function ConceptScreen(props) {
     var cat = CONTENT[props.catId];
     var con = null, i;
@@ -1241,7 +1445,7 @@
     var young = tier === 'young';
     var body = con[tier];
     var pages = pagesFor(con, tier);
-    var vid = videoFor(con, tier);
+    var vid = videoFor(con, tier, props.catId);
     var extras = !!(body.funFact || body.tryThis || (body.words && body.words.length) || vid);
     var last = pages.length + (extras ? 1 : 0) - 1;
 
@@ -1312,7 +1516,7 @@
     } else {
       var p = pages[page];
       content = h('div', { key: 'p' + page, className: 'page-in' },
-        h('div', { className: 'scene' + (young ? ' big' : ''), style: { background: cat.tint || '#fff' } }, p.art),
+        h(AnimScene, { art: p.art, big: young, tint: cat.tint, color: cat.color }),
         h('div', { className: 'story-card' + (reading ? ' reading' : '') },
           h('h2', null, con.emoji + ' ' + con.title),
           h('p', { className: young ? 'big-text' : '' }, p.text)
