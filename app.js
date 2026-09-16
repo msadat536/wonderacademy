@@ -5,75 +5,100 @@
   var h = React.createElement;
   var CFG = window.APP_CONFIG || {};
   var APP_NAME = CFG.APP_NAME || 'Wonder Academy';
-  var FAMILY = CFG.FAMILY_CODE || 'our-family';
   var CONTENT = window.CONTENT || {};
+  var AUTH = window.WA_AUTH;
   var CAT_ORDER = ['science', 'islamic-history', 'geography', 'analytical', 'reasoning', 'iq', 'physics', 'biology'];
   var AVATARS = ['🦁', '🐼', '🦄', '🐯', '🚀', '🌸', '🐬', '🦖', '🐱', '⚽', '🎨', '🌟'];
-  var LS_KEY = 'wonder_academy_v1';
+  var CACHE_KEY = 'wonder_academy_cache_v2';
 
-  /* ---------------- storage ---------------- */
+  /* ---------------- local cache (so a dropped connection does not stop play) ---------------- */
 
-  function sbOn() { return !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY); }
-
-  function sbFetch(path, method, body, extraHeaders, cb) {
-    var headers = {
-      'apikey': CFG.SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + CFG.SUPABASE_ANON_KEY,
-      'Content-Type': 'application/json'
-    };
-    var k;
-    if (extraHeaders) { for (k in extraHeaders) { headers[k] = extraHeaders[k]; } }
-    fetch(CFG.SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/' + path, {
-      method: method || 'GET',
-      headers: headers,
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function (r) {
-      if (!r.ok) { throw new Error('supabase ' + r.status); }
-      return r.text();
-    }).then(function (t) {
-      cb(null, t ? JSON.parse(t) : null);
-    }).catch(function (e) { cb(e, null); });
-  }
-
-  function loadLocal() {
+  function loadCache(userId) {
     try {
-      var raw = localStorage.getItem(LS_KEY);
+      var raw = localStorage.getItem(CACHE_KEY + ':' + userId);
       if (raw) { return JSON.parse(raw); }
     } catch (e) {}
     return { profiles: [], progress: [] };
   }
 
-  function saveLocal(data) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) {}
+  function saveCache(userId, data) {
+    try { localStorage.setItem(CACHE_KEY + ':' + userId, JSON.stringify(data)); } catch (e) {}
   }
 
-  function loadAll(cb) {
-    var local = loadLocal();
-    if (!sbOn()) { cb(local, false); return; }
-    sbFetch('kid_profiles?family_code=eq.' + encodeURIComponent(FAMILY) + '&order=created_at', 'GET', null, null, function (e1, profs) {
-      if (e1) { cb(local, false); return; }
-      sbFetch('kid_progress?family_code=eq.' + encodeURIComponent(FAMILY), 'GET', null, null, function (e2, rows) {
-        if (e2) { cb(local, false); return; }
-        var data = { profiles: profs || [], progress: rows || [] };
-        saveLocal(data);
-        cb(data, true);
+  /* ---------------- PIN hashing ---------------- */
+
+  function simpleHash(str) {
+    var hash = 5381, i;
+    for (i = 0; i < str.length; i++) { hash = ((hash * 33) ^ str.charCodeAt(i)) >>> 0; }
+    return 'sh_' + hash.toString(16);
+  }
+
+  function hashPin(pin, cb) {
+    var salted = 'wonder-academy:' + pin;
+    if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+      try {
+        window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(salted)).then(function (buf) {
+          var bytes = new Uint8Array(buf), out = '', i;
+          for (i = 0; i < bytes.length; i++) { out += ('0' + bytes[i].toString(16)).slice(-2); }
+          cb(out);
+        }).catch(function () { cb(simpleHash(salted)); });
+        return;
+      } catch (e) {}
+    }
+    cb(simpleHash(salted));
+  }
+
+  /* ---------------- data ---------------- */
+
+  function loadEverything(userId, cb) {
+    var out = { profiles: [], progress: [], pinHash: null, loaded: false };
+    AUTH.api('parent_settings?select=pin_hash', 'GET', null, null, function (e1, rows) {
+      if (e1 && e1.status === 401) { cb('signedout', null); return; }
+      if (!e1 && rows && rows[0]) { out.pinHash = rows[0].pin_hash; }
+      AUTH.api('kid_profiles?select=*&order=created_at', 'GET', null, null, function (e2, profs) {
+        if (e2 && e2.status === 401) { cb('signedout', null); return; }
+        AUTH.api('kid_progress?select=*', 'GET', null, null, function (e3, rows2) {
+          if (e3 && e3.status === 401) { cb('signedout', null); return; }
+          if (e2 || e3) {
+            var cached = loadCache(userId);
+            out.profiles = cached.profiles;
+            out.progress = cached.progress;
+            cb(null, out, true);
+            return;
+          }
+          out.profiles = profs || [];
+          out.progress = rows2 || [];
+          out.loaded = true;
+          saveCache(userId, { profiles: out.profiles, progress: out.progress });
+          cb(null, out, false);
+        });
       });
     });
   }
 
-  function persistProfile(p, cb) {
-    if (!sbOn()) { cb(null, p); return; }
-    sbFetch('kid_profiles', 'POST', {
-      family_code: FAMILY, name: p.name, age: p.age, avatar: p.avatar
-    }, { 'Prefer': 'return=representation' }, function (e, out) {
-      if (!e && out && out[0]) { cb(null, out[0]); } else { cb(e, p); }
-    });
+  function savePin(userId, pinHash, cb) {
+    AUTH.api('parent_settings?on_conflict=owner_id', 'POST',
+      { owner_id: userId, pin_hash: pinHash },
+      { 'Prefer': 'resolution=merge-duplicates' }, cb);
   }
 
-  function persistProgress(row) {
-    if (!sbOn()) { return; }
-    sbFetch('kid_progress?on_conflict=profile_id,category,concept_id,cycle', 'POST', {
-      family_code: FAMILY, profile_id: row.profile_id, category: row.category,
+  function createProfile(userId, p, cb) {
+    AUTH.api('kid_profiles', 'POST',
+      { owner_id: userId, name: p.name, age: p.age, avatar: p.avatar },
+      { 'Prefer': 'return=representation' },
+      function (err, out) {
+        if (err || !out || !out[0]) { cb(err || { message: 'Could not save profile.' }, null); return; }
+        cb(null, out[0]);
+      });
+  }
+
+  function deleteProfile(id, cb) {
+    AUTH.api('kid_profiles?id=eq.' + encodeURIComponent(id), 'DELETE', null, null, cb);
+  }
+
+  function persistProgress(userId, row) {
+    AUTH.api('kid_progress?on_conflict=profile_id,category,concept_id,cycle', 'POST', {
+      owner_id: userId, profile_id: row.profile_id, category: row.category,
       concept_id: row.concept_id, cycle: row.cycle,
       best_score: row.best_score, stars: row.stars
     }, { 'Prefer': 'resolution=merge-duplicates' }, function () {});
@@ -116,6 +141,15 @@
     return n;
   }
 
+  function hasContentFor(data, pid, cat) {
+    var prof = null, i;
+    for (i = 0; i < data.profiles.length; i++) { if (data.profiles[i].id === pid) { prof = data.profiles[i]; } }
+    var tier = tierOf(prof ? prof.age : 8);
+    return function (con) {
+      return con[tier] && con[tier].story && con[tier].questions && con[tier].questions.length > 0;
+    };
+  }
+
   function totalTrophies(data, pid) {
     var n = 0;
     CAT_ORDER.forEach(function (catId) {
@@ -127,15 +161,6 @@
     return n;
   }
 
-  function hasContentFor(data, pid, cat) {
-    var prof = null, i;
-    for (i = 0; i < data.profiles.length; i++) { if (data.profiles[i].id === pid) { prof = data.profiles[i]; } }
-    var tier = tierOf(prof ? prof.age : 8);
-    return function (con) {
-      return con[tier] && con[tier].story && con[tier].questions && con[tier].questions.length > 0;
-    };
-  }
-
   /* ---------------- speech ---------------- */
 
   function speak(text, onEnd) {
@@ -143,8 +168,7 @@
     window.speechSynthesis.cancel();
     var u = new SpeechSynthesisUtterance(text);
     u.rate = 0.95; u.pitch = 1.05;
-    var voices = window.speechSynthesis.getVoices();
-    var i;
+    var voices = window.speechSynthesis.getVoices(), i;
     for (i = 0; i < voices.length; i++) {
       if (voices[i].lang && voices[i].lang.indexOf('en') === 0) { u.voice = voices[i]; break; }
     }
@@ -172,23 +196,20 @@
   /* ---------------- app ---------------- */
 
   function App() {
-    var st = React.useState({ screen: 'loading', data: { profiles: [], progress: [] }, synced: false });
+    var st = React.useState({
+      screen: 'loading', data: { profiles: [], progress: [] },
+      pinHash: null, session: null, offline: false, notice: ''
+    });
     var state = st[0], setState = st[1];
     var pidSt = React.useState(null);
     var pid = pidSt[0], setPid = pidSt[1];
     var navSt = React.useState({ catId: null, conceptId: null });
     var nav = navSt[0], setNav = navSt[1];
 
-    React.useEffect(function () {
-      loadAll(function (data, synced) {
-        setState({ screen: data.profiles.length ? 'profiles' : 'newProfile', data: data, synced: synced });
-      });
-      if (window.speechSynthesis) { window.speechSynthesis.getVoices(); }
-    }, []);
-
     function update(patch) {
       setState(function (s) {
-        var n = { screen: s.screen, data: s.data, synced: s.synced }, k;
+        var n = {}, k;
+        for (k in s) { n[k] = s[k]; }
         for (k in patch) { n[k] = patch[k]; }
         return n;
       });
@@ -206,23 +227,78 @@
       update({ screen: screen });
     }
 
-    function addProfile(name, age, avatar) {
-      var p = { id: 'local-' + Date.now(), family_code: FAMILY, name: name, age: age, avatar: avatar };
-      persistProfile(p, function (err, saved) {
-        var data = state.data;
-        var next = { profiles: data.profiles.concat([saved]), progress: data.progress };
-        saveLocal(next);
-        setPid(saved.id);
-        setState({ screen: 'home', data: next, synced: state.synced });
+    function bootWithSession(session) {
+      loadEverything(session.user_id, function (err, out, offline) {
+        if (err === 'signedout') {
+          AUTH.signOut();
+          update({ screen: 'login', session: null, notice: 'Please sign in again.' });
+          return;
+        }
+        var data = { profiles: out.profiles, progress: out.progress };
+        var next = out.pinHash ? (data.profiles.length ? 'profiles' : 'parent') : 'pinSetup';
+        setState({
+          screen: next, data: data, pinHash: out.pinHash,
+          session: session, offline: !!offline, notice: ''
+        });
+      });
+    }
+
+    React.useEffect(function () {
+      if (!AUTH.configured()) { update({ screen: 'setup' }); return; }
+      var s = AUTH.getSession();
+      if (!s) { update({ screen: 'login' }); return; }
+      bootWithSession(s);
+      if (window.speechSynthesis) { window.speechSynthesis.getVoices(); }
+    }, []);
+
+    function handleSignedIn(session) {
+      update({ screen: 'loading', session: session, notice: '' });
+      bootWithSession(session);
+    }
+
+    function handleSignOut() {
+      AUTH.signOut();
+      setPid(null);
+      setState({
+        screen: 'login', data: { profiles: [], progress: [] },
+        pinHash: null, session: null, offline: false, notice: ''
+      });
+    }
+
+    function onPinCreated(hash) {
+      savePin(state.session.user_id, hash, function (err) {
+        if (err) { update({ notice: 'Could not save the PIN. Check your connection.' }); return; }
+        update({ pinHash: hash, screen: 'parent', notice: '' });
+      });
+    }
+
+    function onAddProfile(name, age, avatar, done) {
+      createProfile(state.session.user_id, { name: name, age: age, avatar: avatar }, function (err, saved) {
+        if (err) { done('Could not save. Check your connection.'); return; }
+        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress };
+        saveCache(state.session.user_id, next);
+        update({ data: next });
+        done(null);
+      });
+    }
+
+    function onDeleteProfile(id) {
+      deleteProfile(id, function (err) {
+        if (err) { update({ notice: 'Could not remove that profile.' }); return; }
+        var next = {
+          profiles: state.data.profiles.filter(function (p) { return p.id !== id; }),
+          progress: state.data.progress.filter(function (r) { return r.profile_id !== id; })
+        };
+        saveCache(state.session.user_id, next);
+        update({ data: next, notice: '' });
       });
     }
 
     function recordResult(catId, conceptId, cycle, correct) {
-      var data = state.data;
-      var rows = data.progress.slice();
-      var found = null, i;
+      var rows = state.data.progress.slice();
+      var found = null, i, r;
       for (i = 0; i < rows.length; i++) {
-        var r = rows[i];
+        r = rows[i];
         if (r.profile_id === pid && r.category === catId && r.concept_id === conceptId && r.cycle === cycle) { found = r; }
       }
       if (found) {
@@ -232,32 +308,56 @@
         found = { profile_id: pid, category: catId, concept_id: conceptId, cycle: cycle, best_score: correct, stars: correct };
         rows.push(found);
       }
-      var next = { profiles: data.profiles, progress: rows };
-      saveLocal(next);
-      persistProgress(found);
+      var next = { profiles: state.data.profiles, progress: rows };
+      saveCache(state.session.user_id, next);
+      persistProgress(state.session.user_id, found);
       update({ data: next });
     }
 
-    var profile = null, i;
-    for (i = 0; i < state.data.profiles.length; i++) { if (state.data.profiles[i].id === pid) { profile = state.data.profiles[i]; } }
+    /* --- screens that do not need a kid profile --- */
 
     if (state.screen === 'loading') {
       return h('div', { className: 'center-wrap' }, h('div', { className: 'burst' }, '🌟'), h('h1', null, APP_NAME));
     }
-    if (state.screen === 'profiles') {
-      return h(ProfilePick, {
-        profiles: state.data.profiles, data: state.data,
-        onPick: function (p) { setPid(p.id); go('home'); },
-        onNew: function () { go('newProfile'); }
+    if (state.screen === 'setup') { return h(SetupScreen, null); }
+    if (state.screen === 'login') {
+      return h(LoginScreen, { notice: state.notice, onSignedIn: handleSignedIn });
+    }
+    if (state.screen === 'pinSetup') {
+      return h(PinSetupScreen, { notice: state.notice, onCreated: onPinCreated, onSignOut: handleSignOut });
+    }
+    if (state.screen === 'parentPin') {
+      return h(PinPromptScreen, {
+        pinHash: state.pinHash,
+        onOk: function () { go('parent'); },
+        onCancel: function () { go('profiles'); }
       });
     }
-    if (state.screen === 'newProfile') {
-      return h(ProfileNew, { onCreate: addProfile, canBack: state.data.profiles.length > 0, onBack: function () { go('profiles'); } });
+    if (state.screen === 'parent') {
+      return h(ParentScreen, {
+        data: state.data, session: state.session, notice: state.notice, offline: state.offline,
+        onAdd: onAddProfile, onDelete: onDeleteProfile, onSignOut: handleSignOut,
+        onPinChange: function (hash) { onPinCreated(hash); },
+        onDone: function () { go('profiles'); }
+      });
     }
+    if (state.screen === 'profiles') {
+      return h(ProfilePick, {
+        data: state.data, offline: state.offline,
+        onPick: function (p) { setPid(p.id); go('home'); },
+        onParent: function () { go('parentPin'); }
+      });
+    }
+
+    var profile = null, i;
+    for (i = 0; i < state.data.profiles.length; i++) { if (state.data.profiles[i].id === pid) { profile = state.data.profiles[i]; } }
     if (!profile) { return h('div', { className: 'center-wrap' }, h('h1', null, '...')); }
 
     var shell = [
-      h(TopBar, { key: 'tb', profile: profile, stars: totalStars(state.data, pid), onSwitch: function () { setPid(null); go('profiles'); } })
+      h(TopBar, {
+        key: 'tb', profile: profile, stars: totalStars(state.data, pid),
+        onSwitch: function () { setPid(null); go('profiles'); }
+      })
     ];
 
     if (state.screen === 'home') {
@@ -277,7 +377,7 @@
     } else if (state.screen === 'quiz') {
       shell.push(h(QuizScreen, {
         key: 'quiz', data: state.data, pid: pid, profile: profile, catId: nav.catId, conceptId: nav.conceptId,
-        onDone: function (correct, cycle) { recordResult(nav.catId, nav.conceptId, cycle, correct); go('results', {}); window.__lastScore = correct; },
+        onDone: function (correct, cycle) { window.__lastScore = correct; recordResult(nav.catId, nav.conceptId, cycle, correct); go('results'); },
         onQuit: function () { go('concept'); }
       }));
     } else if (state.screen === 'results') {
@@ -299,7 +399,247 @@
     return h('div', { className: 'app' }, shell);
   }
 
-  /* ---------------- screens ---------------- */
+  /* ---------------- auth screens ---------------- */
+
+  function SetupScreen() {
+    return h('div', { className: 'app center-wrap' },
+      h('div', { style: { fontSize: '54px' } }, '🔧'),
+      h('h1', null, 'One setup step left'),
+      h('div', { className: 'story-card', style: { textAlign: 'left', maxWidth: '520px', margin: '16px auto' } },
+        h('p', null, 'This app signs in with Supabase, so it needs your project keys before anyone can log in.\n\n1. Create a free project at supabase.com\n2. Run supabase.sql in the SQL editor\n3. Copy the Project URL and the anon public key from Project Settings, API\n4. Paste both into config.js and upload it again\n\nFull steps are in README.md.')
+      )
+    );
+  }
+
+  function LoginScreen(props) {
+    var modeSt = React.useState('in'); var mode = modeSt[0], setMode = modeSt[1];
+    var emailSt = React.useState(''); var email = emailSt[0], setEmail = emailSt[1];
+    var pwSt = React.useState(''); var pw = pwSt[0], setPw = pwSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var msgSt = React.useState(props.notice || ''); var msg = msgSt[0], setMsg = msgSt[1];
+
+    function submit() {
+      if (busy) { return; }
+      if (!email.trim() || pw.length < 6) { setMsg('Enter an email and a password of at least 6 characters.'); return; }
+      setBusy(true); setMsg('');
+      var fn = mode === 'in' ? AUTH.signIn : AUTH.signUp;
+      fn(email.trim(), pw, function (err, session) {
+        setBusy(false);
+        if (err) { setMsg(err); return; }
+        if (session && session.needsConfirm) {
+          setMsg('Check your email and click the confirmation link, then sign in.');
+          setMode('in');
+          return;
+        }
+        props.onSignedIn(session);
+      });
+    }
+
+    return h('div', { className: 'app center-wrap' },
+      h('div', { style: { fontSize: '54px' } }, '🔐'),
+      h('h1', null, APP_NAME),
+      h('div', { className: 'sub' }, mode === 'in' ? 'Parent sign in' : 'Create your parent account'),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' } },
+        h('input', {
+          className: 'name-input', type: 'email', value: email, placeholder: 'Email',
+          autoComplete: 'username',
+          onChange: function (e) { setEmail(e.target.value); }
+        }),
+        h('input', {
+          className: 'name-input', type: 'password', value: pw, placeholder: 'Password',
+          autoComplete: mode === 'in' ? 'current-password' : 'new-password',
+          onChange: function (e) { setPw(e.target.value); },
+          onKeyDown: function (e) { if (e.key === 'Enter') { submit(); } }
+        })
+      ),
+      msg ? h('div', { className: 'sub', style: { color: '#C0392B', marginTop: '14px', maxWidth: '420px', margin: '14px auto 0' } }, msg) : null,
+      h('div', { className: 'actionrow' },
+        h('button', { className: 'btn green', disabled: busy, onClick: submit },
+          busy ? 'Please wait...' : (mode === 'in' ? 'Sign in' : 'Create account'))
+      ),
+      h('div', { style: { marginTop: '18px' } },
+        h('button', {
+          className: 'btn plain small',
+          onClick: function () { setMode(mode === 'in' ? 'up' : 'in'); setMsg(''); }
+        }, mode === 'in' ? 'First time? Create an account' : 'I already have an account')
+      ),
+      h('div', { className: 'sub', style: { marginTop: '22px', fontSize: '15px', opacity: .7 } },
+        'Kids stay signed in on this device once you sign in.')
+    );
+  }
+
+  function PinPad(props) {
+    var pin = props.value;
+    function tap(d) { if (pin.length < 4) { props.onChange(pin + d); } }
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    return h('div', null,
+      h('div', { className: 'pin-dots' }, [0, 1, 2, 3].map(function (i) {
+        return h('span', { key: i, className: i < pin.length ? 'on' : '' });
+      })),
+      h('div', { className: 'pinpad' },
+        keys.map(function (k) { return h('button', { key: k, onClick: function () { tap(k); } }, k); }).concat([
+          h('button', { key: 'clr', className: 'wide', onClick: function () { props.onChange(''); } }, 'Clear'),
+          h('button', { key: '0', onClick: function () { tap('0'); } }, '0'),
+          h('button', { key: 'del', className: 'wide', onClick: function () { props.onChange(pin.slice(0, -1)); } }, '⌫')
+        ])
+      )
+    );
+  }
+
+  function PinSetupScreen(props) {
+    var pinSt = React.useState(''); var pin = pinSt[0], setPin = pinSt[1];
+    var confirmSt = React.useState(null); var first = confirmSt[0], setFirst = confirmSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+
+    React.useEffect(function () {
+      if (pin.length !== 4) { return; }
+      if (first === null) { setFirst(pin); setPin(''); setMsg('Enter the same PIN again.'); return; }
+      if (first !== pin) { setFirst(null); setPin(''); setMsg('Those did not match. Start again.'); return; }
+      hashPin(pin, function (hash) { props.onCreated(hash); });
+    }, [pin]);
+
+    return h('div', { className: 'app center-wrap' },
+      h('div', { style: { fontSize: '48px' } }, '🔑'),
+      h('h1', null, 'Create a parent PIN'),
+      h('div', { className: 'sub' }, first === null ? 'Choose 4 digits. You will use this to manage profiles.' : 'Type it once more.'),
+      h(PinPad, { value: pin, onChange: setPin }),
+      msg ? h('div', { className: 'sub', style: { marginTop: '10px' } }, msg) : null,
+      props.notice ? h('div', { className: 'sub', style: { color: '#C0392B' } }, props.notice) : null,
+      h('div', { className: 'actionrow' },
+        h('button', { className: 'btn plain small', onClick: props.onSignOut }, 'Sign out')
+      )
+    );
+  }
+
+  function PinPromptScreen(props) {
+    var pinSt = React.useState(''); var pin = pinSt[0], setPin = pinSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+
+    React.useEffect(function () {
+      if (pin.length !== 4) { return; }
+      hashPin(pin, function (hash) {
+        if (hash === props.pinHash) { props.onOk(); }
+        else { setPin(''); setMsg('Wrong PIN. Try again.'); }
+      });
+    }, [pin]);
+
+    return h('div', { className: 'app center-wrap' },
+      h('div', { style: { fontSize: '48px' } }, '🔒'),
+      h('h1', null, 'Parent PIN'),
+      h('div', { className: 'sub' }, 'Grown-ups only'),
+      h(PinPad, { value: pin, onChange: setPin }),
+      msg ? h('div', { className: 'sub', style: { color: '#C0392B', marginTop: '10px' } }, msg) : null,
+      h('div', { className: 'actionrow' },
+        h('button', { className: 'btn plain small', onClick: props.onCancel }, 'Back')
+      )
+    );
+  }
+
+  /* ---------------- parent area ---------------- */
+
+  function ParentScreen(props) {
+    var showAddSt = React.useState(props.data.profiles.length === 0);
+    var showAdd = showAddSt[0], setShowAdd = showAddSt[1];
+    var nameSt = React.useState(''); var name = nameSt[0], setName = nameSt[1];
+    var ageSt = React.useState(null); var age = ageSt[0], setAge = ageSt[1];
+    var avSt = React.useState(AVATARS[0]); var avatar = avSt[0], setAvatar = avSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var errSt = React.useState(''); var err = errSt[0], setErr = errSt[1];
+    var confirmSt = React.useState(null); var confirmId = confirmSt[0], setConfirmId = confirmSt[1];
+    var pinModeSt = React.useState(false); var pinMode = pinModeSt[0], setPinMode = pinModeSt[1];
+    var newPinSt = React.useState(''); var newPin = newPinSt[0], setNewPin = newPinSt[1];
+    var ages = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+    React.useEffect(function () {
+      if (!pinMode || newPin.length !== 4) { return; }
+      hashPin(newPin, function (hash) { props.onPinChange(hash); setPinMode(false); setNewPin(''); });
+    }, [newPin, pinMode]);
+
+    function add() {
+      if (!name.trim() || !age || busy) { return; }
+      setBusy(true); setErr('');
+      props.onAdd(name.trim(), age, avatar, function (e) {
+        setBusy(false);
+        if (e) { setErr(e); return; }
+        setName(''); setAge(null); setAvatar(AVATARS[0]); setShowAdd(false);
+      });
+    }
+
+    if (pinMode) {
+      return h('div', { className: 'app center-wrap' },
+        h('h1', null, 'New parent PIN'),
+        h('div', { className: 'sub' }, 'Enter 4 digits'),
+        h(PinPad, { value: newPin, onChange: setNewPin }),
+        h('div', { className: 'actionrow' },
+          h('button', { className: 'btn plain small', onClick: function () { setPinMode(false); setNewPin(''); } }, 'Cancel'))
+      );
+    }
+
+    return h('div', { className: 'app' },
+      h('div', { className: 'backrow' },
+        h('button', { className: 'btn plain small', onClick: props.onDone }, '← Done'),
+        h('div', { className: 'chip' }, '🔧 Parent area')
+      ),
+      props.offline ? h('div', { className: 'sub', style: { color: '#C0392B' } }, 'Working offline. Changes may not save.') : null,
+      props.notice ? h('div', { className: 'sub', style: { color: '#C0392B' } }, props.notice) : null,
+
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Kid profiles'),
+      props.data.profiles.length === 0
+        ? h('div', { className: 'coming' }, 'No profiles yet. Add your first one below.')
+        : h('div', null, props.data.profiles.map(function (p) {
+            return h('div', { key: p.id, className: 'reward-cat' },
+              h('span', { className: 'em2' }, p.avatar),
+              h('span', { className: 'fill' }, p.name + ' · age ' + p.age),
+              confirmId === p.id
+                ? h('span', { style: { display: 'flex', gap: '8px' } },
+                    h('button', { className: 'btn small', style: { background: '#FFB3B3' }, onClick: function () { setConfirmId(null); props.onDelete(p.id); } }, 'Remove'),
+                    h('button', { className: 'btn plain small', onClick: function () { setConfirmId(null); } }, 'Keep'))
+                : h('button', { className: 'btn plain small', onClick: function () { setConfirmId(p.id); } }, 'Remove')
+            );
+          })),
+
+      showAdd
+        ? h('div', { className: 'story-card', style: { marginTop: '16px' } },
+            h('h2', null, 'Add a profile'),
+            h('div', { style: { textAlign: 'center' } },
+              h('input', {
+                className: 'name-input', value: name, maxLength: 14, placeholder: 'Name',
+                onChange: function (e) { setName(e.target.value); }
+              }),
+              h('div', { className: 'sub', style: { marginTop: '14px' } }, 'Age'),
+              h('div', { className: 'age-pick' }, ages.map(function (a) {
+                return h('button', { key: a, className: a === age ? 'sel' : '', onClick: function () { setAge(a); } }, a);
+              })),
+              h('div', { className: 'sub' }, 'Avatar'),
+              h('div', { className: 'avatar-pick' }, AVATARS.map(function (a) {
+                return h('button', { key: a, className: a === avatar ? 'sel' : '', onClick: function () { setAvatar(a); } }, a);
+              })),
+              err ? h('div', { className: 'sub', style: { color: '#C0392B' } }, err) : null,
+              h('div', { className: 'actionrow' },
+                props.data.profiles.length > 0
+                  ? h('button', { className: 'btn plain', onClick: function () { setShowAdd(false); setErr(''); } }, 'Cancel') : null,
+                h('button', { className: 'btn green', disabled: !name.trim() || !age || busy, onClick: add },
+                  busy ? 'Saving...' : 'Save profile')
+              ),
+              h('div', { className: 'sub', style: { fontSize: '15px', opacity: .7, marginTop: '6px' } },
+                'Age 6 and under gets shorter stories and 3 choices. Age 7 and up gets 4 choices.')
+            ))
+        : h('div', { className: 'actionrow' },
+            h('button', { className: 'btn', onClick: function () { setShowAdd(true); } }, '➕ Add a profile')),
+
+      h('h1', { style: { fontSize: '24px', margin: '26px 0 6px' } }, 'Account'),
+      h('div', { className: 'reward-cat' },
+        h('span', { className: 'em2' }, '📧'),
+        h('span', { className: 'fill' }, props.session ? props.session.email : '')
+      ),
+      h('div', { className: 'actionrow', style: { marginTop: '14px' } },
+        h('button', { className: 'btn grape small', onClick: function () { setPinMode(true); } }, 'Change PIN'),
+        h('button', { className: 'btn plain small', onClick: props.onSignOut }, 'Sign out')
+      )
+    );
+  }
+
+  /* ---------------- kid screens ---------------- */
 
   function TopBar(props) {
     return h('div', { className: 'topbar' },
@@ -316,8 +656,9 @@
       h('div', { style: { fontSize: '54px' } }, '🌈'),
       h('h1', null, 'Who is learning today?'),
       h('div', { className: 'sub' }, 'Tap your picture!'),
+      props.offline ? h('div', { className: 'sub', style: { color: '#C0392B' } }, 'Working offline') : null,
       h('div', { className: 'profile-row' },
-        props.profiles.map(function (p) {
+        props.data.profiles.map(function (p) {
           return h('button', {
             key: p.id, className: 'tile profile-card', onClick: function () { props.onPick(p); }
           },
@@ -325,41 +666,10 @@
             h('div', { className: 'pname' }, p.name),
             h('div', { className: 'page' }, 'Age ' + p.age + ' · ⭐ ' + totalStars(props.data, p.id))
           );
-        }).concat([
-          h('button', { key: 'new', className: 'tile profile-card', onClick: props.onNew },
-            h('div', { className: 'avatar' }, '➕'),
-            h('div', { className: 'pname' }, 'New explorer'))
-        ])
-      )
-    );
-  }
-
-  function ProfileNew(props) {
-    var nameSt = React.useState(''); var name = nameSt[0], setName = nameSt[1];
-    var ageSt = React.useState(null); var age = ageSt[0], setAge = ageSt[1];
-    var avSt = React.useState(AVATARS[0]); var avatar = avSt[0], setAvatar = avSt[1];
-    var ages = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    return h('div', { className: 'app center-wrap' },
-      h('h1', null, 'Make your explorer card!'),
-      h('div', { className: 'sub' }, 'What is your name?'),
-      h('input', {
-        className: 'name-input', value: name, maxLength: 14,
-        onChange: function (e) { setName(e.target.value); }, placeholder: 'Type your name'
-      }),
-      h('div', { className: 'sub', style: { marginTop: '18px' } }, 'How old are you?'),
-      h('div', { className: 'age-pick' }, ages.map(function (a) {
-        return h('button', { key: a, className: a === age ? 'sel' : '', onClick: function () { setAge(a); } }, a);
-      })),
-      h('div', { className: 'sub' }, 'Pick your buddy!'),
-      h('div', { className: 'avatar-pick' }, AVATARS.map(function (a) {
-        return h('button', { key: a, className: a === avatar ? 'sel' : '', onClick: function () { setAvatar(a); } }, a);
-      })),
-      h('div', { className: 'actionrow' },
-        props.canBack ? h('button', { className: 'btn plain', onClick: props.onBack }, 'Back') : null,
-        h('button', {
-          className: 'btn green', disabled: !name.trim() || !age,
-          onClick: function () { props.onCreate(name.trim(), age, avatar); }
-        }, "Let's go! 🚀")
+        })
+      ),
+      h('div', { style: { marginTop: '30px' } },
+        h('button', { className: 'btn plain small', onClick: props.onParent }, '🔒 Parent area')
       )
     );
   }
@@ -465,8 +775,7 @@
     var qs = con[tier].questions;
     var initSt = React.useState(function () {
       return qs.map(function (q) {
-        var order = shuffle(q.choices.map(function (c, idx) { return idx; }));
-        return { order: order };
+        return { order: shuffle(q.choices.map(function (c, idx) { return idx; })) };
       });
     });
     var plans = initSt[0];
@@ -522,7 +831,10 @@
       })),
       h('div', { className: 'question-card' },
         h('div', { className: 'q' }, q.q),
-        young ? h('button', { className: 'btn plain small', style: { marginTop: '10px' }, onClick: function () { speak(q.q + '. ' + plan.order.map(function (ri) { return q.choices[ri]; }).join('. ')); } }, '🔊 Read it') : null,
+        young ? h('button', {
+          className: 'btn plain small', style: { marginTop: '10px' },
+          onClick: function () { speak(q.q + '. ' + plan.order.map(function (ri) { return q.choices[ri]; }).join('. ')); }
+        }, '🔊 Read it') : null,
         h('div', { className: 'choices' + (q.choices.length > 3 ? ' four' : '') },
           plan.order.map(function (realIdx, dispIdx) {
             var cls = 'choice';

@@ -1,36 +1,6 @@
-/* Biology - curriculum scaffold. Stories and questions arrive in the next content wave. */
+/* Biology - 30 concepts. Stories and questions arrive in a later content wave. */
 window.CONTENT = window.CONTENT || {};
-window.CONTENT["biology"] = {
-  id: "biology", title: "Biology", emoji: "\ud83c\udf31", color: "#3FA34D", tint: "#E2F4E4",
-  concepts: [
-    { id: "living-nonliving", title: "Living and Non-Living", emoji: "\ud83c\udf3f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "plants-grow", title: "How Plants Grow", emoji: "\ud83c\udf31", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "seeds", title: "Seeds", emoji: "\ud83c\udf30", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "flowers", title: "Flowers and Pollination", emoji: "\ud83c\udf38", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "trees", title: "Trees", emoji: "\ud83c\udf33", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "leaves", title: "Leaves Make Food", emoji: "\ud83c\udf43", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "fruits-veg", title: "Fruits and Vegetables", emoji: "\ud83c\udf4e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "insects", title: "Insects", emoji: "\ud83d\udc1e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "butterfly-cycle", title: "The Butterfly Life Cycle", emoji: "\ud83e\udd8b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "frog-cycle", title: "The Frog Life Cycle", emoji: "\ud83d\udc38", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "birds", title: "Birds", emoji: "\ud83d\udc26", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "fish", title: "Fish", emoji: "\ud83d\udc20", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "mammals", title: "Mammals", emoji: "\ud83d\udc18", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "reptiles", title: "Reptiles", emoji: "\ud83e\udd8e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "ocean-animals", title: "Ocean Animals", emoji: "\ud83d\udc19", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "baby-animals", title: "Baby Animals", emoji: "\ud83d\udc23", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "animal-homes", title: "Animal Homes", emoji: "\ud83c\udfe1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "animal-food", title: "What Animals Eat", emoji: "\ud83e\udd69", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "food-chain", title: "The Food Chain", emoji: "\ud83d\udd17", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "camouflage", title: "Animal Camouflage", emoji: "\ud83e\udd8e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "hibernation", title: "Hibernation and Migration", emoji: "\ud83d\udc3b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "human-body", title: "The Amazing Human Body", emoji: "\ud83e\uddcd", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "heart", title: "The Heart", emoji: "\u2764\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "lungs", title: "The Lungs", emoji: "\ud83e\udec1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "bones", title: "Bones and Muscles", emoji: "\ud83e\uddb4", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "brain", title: "The Brain", emoji: "\ud83e\udde0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "senses", title: "The Five Senses", emoji: "\ud83d\udc40", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "teeth-care", title: "Teeth and Healthy Smiles", emoji: "\ud83e\uddb7", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "germs", title: "Germs and Staying Clean", emoji: "\ud83e\uddfc", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "healthy-food", title: "Eating Healthy", emoji: "\ud83e\udd57", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
-]};
+window.CONTENT['biology'] = { id: 'biology', title: 'Biology', emoji: '🌱', color: '#58B368', tint: '#E2F5E6',
+concepts: [
+['living-nonliving','Living and Non-Living','🌸'],['plants','How Plants Grow','🌱'],['seeds','Amazing Seeds','🌰'],['flowers','Flowers and Bees','🌺'],['trees','Trees','🌳'],['animal-groups','Animal Groups','🦁'],['mammals','Mammals','🐘'],['birds','Birds','🐦'],['fish','Fish','🐟'],['insects','Insects','🐞'],['reptiles','Reptiles','🦎'],['amphibians','Amphibians','🐸'],['butterfly-cycle','The Butterfly Life Cycle','🦋'],['frog-cycle','The Frog Life Cycle','🐸'],['human-body','The Human Body','🧍'],['heart','The Heart','❤️'],['lungs','Lungs and Breathing','🫁'],['bones','Bones and the Skeleton','🦴'],['muscles','Muscles','💪'],['brain','The Amazing Brain','🧠'],['five-senses','The Five Senses','👀'],['teeth','Teeth','🦷'],['healthy-food','Healthy Food','🥦'],['germs','Germs and Washing Hands','🧼'],['sleep','Why We Sleep','😴'],['exercise','Moving and Exercise','🏃'],['habitats','Animal Homes','🏠'],['food-chains','Food Chains','🐛'],['baby-animals','Baby Animals','🐣'],['pets','Caring for Pets','🐶']
+].map(function (a) { return { id: a[0], title: a[1], emoji: a[2], video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }; }) };

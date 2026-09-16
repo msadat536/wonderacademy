@@ -171,3 +171,22 @@ input.name-input {
 @media (prefers-reduced-motion: reduce) {
   .step.next, .burst, .choice.correct, .choice.wrong { animation: none; }
 }
+
+/* PIN pad */
+.pin-dots { display: flex; gap: 14px; justify-content: center; margin: 18px 0 20px; }
+.pin-dots span {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 3px solid #223A5E; background: #fff;
+}
+.pin-dots span.on { background: #FFC93C; }
+.pinpad {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  max-width: 300px; margin: 0 auto;
+}
+.pinpad button {
+  font-size: 26px; font-weight: 800; color: #223A5E;
+  background: #fff; border: 3px solid #223A5E; border-radius: 18px;
+  padding: 16px 0; box-shadow: 4px 4px 0 #223A5E;
+}
+.pinpad button:active { transform: translate(3px,3px); box-shadow: 1px 1px 0 #223A5E; }
+.pinpad button.wide { font-size: 18px; background: #F4F9FF; }

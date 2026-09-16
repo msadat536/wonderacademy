@@ -1,8 +1,18 @@
 -- Wonder Academy - run this once in the Supabase SQL editor.
+-- If you ran an earlier version of this file, uncomment the three drops first:
+-- drop table if exists kid_progress;
+-- drop table if exists kid_profiles;
+-- drop table if exists parent_settings;
+
+create table if not exists parent_settings (
+  owner_id uuid primary key references auth.users(id) on delete cascade,
+  pin_hash text not null,
+  updated_at timestamptz default now()
+);
 
 create table if not exists kid_profiles (
   id uuid primary key default gen_random_uuid(),
-  family_code text not null,
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   name text not null,
   age int not null,
   avatar text not null default '🦁',
@@ -11,7 +21,7 @@ create table if not exists kid_profiles (
 
 create table if not exists kid_progress (
   id uuid primary key default gen_random_uuid(),
-  family_code text not null,
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   profile_id uuid not null references kid_profiles(id) on delete cascade,
   category text not null,
   concept_id text not null,
@@ -22,14 +32,16 @@ create table if not exists kid_progress (
   unique (profile_id, category, concept_id, cycle)
 );
 
+alter table parent_settings enable row level security;
 alter table kid_profiles enable row level security;
 alter table kid_progress enable row level security;
 
--- Open policies scoped by usage. This is a family app: anyone with the anon key
--- can read/write these two tables, and rows are grouped by family_code.
--- Do not store anything sensitive here beyond first name, age, and quiz scores.
-create policy "profiles select" on kid_profiles for select using (true);
-create policy "profiles insert" on kid_profiles for insert with check (true);
-create policy "progress select" on kid_progress for select using (true);
-create policy "progress insert" on kid_progress for insert with check (true);
-create policy "progress update" on kid_progress for update using (true);
+-- Every row belongs to the signed-in parent account. Nobody else can read or write it.
+create policy "own settings" on parent_settings
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+create policy "own profiles" on kid_profiles
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+create policy "own progress" on kid_progress
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);

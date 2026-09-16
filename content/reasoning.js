@@ -1,36 +1,6 @@
-/* Reasoning - curriculum scaffold. Stories and questions arrive in the next content wave. */
+/* Reasoning - 30 concepts. Stories and questions arrive in a later content wave. */
 window.CONTENT = window.CONTENT || {};
-window.CONTENT["reasoning"] = {
-  id: "reasoning", title: "Reasoning", emoji: "\ud83d\udca1", color: "#7C5CBF", tint: "#EAE2F8",
-  concepts: [
-    { id: "why-questions", title: "Asking Why", emoji: "\u2753", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "because", title: "Because: Giving Reasons", emoji: "\ud83d\udcac", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "if-then", title: "If This, Then That", emoji: "\u27a1\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "clue-solving", title: "Solving with Clues", emoji: "\ud83d\udd0e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "who-did-it", title: "Who Did It Mysteries", emoji: "\ud83d\udd75\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "true-reasons", title: "Good Reasons and Silly Reasons", emoji: "\u2696\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "predicting", title: "What Happens Next", emoji: "\ud83d\udd2e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "sorting-facts", title: "Fact or Make-Believe", emoji: "\ud83d\udcd6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "logic-pairs", title: "Logic Pairs", emoji: "\ud83d\udd17", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "not-clues", title: "The Word NOT", emoji: "\ud83d\udeab", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "all-some-none", title: "All, Some or None", emoji: "\ud83d\udd22", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "order-logic", title: "Putting Events in Order", emoji: "\ud83d\udcc5", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "comparisons", title: "Bigger, Faster, Older", emoji: "\ud83d\udccf", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "deductions", title: "Detective Deductions", emoji: "\ud83e\uddd0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "rule-finding", title: "Find the Rule", emoji: "\ud83d\udcd0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "fair-unfair", title: "Fair or Not Fair", emoji: "\u2696\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "choices-consequences", title: "Choices and What Follows", emoji: "\ud83c\udf31", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "puzzling-out", title: "Puzzling It Out", emoji: "\ud83e\udde9", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "either-or", title: "Either This or That", emoji: "\ud83d\udd00", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "hidden-answer", title: "The Hidden Answer", emoji: "\ud83c\udf81", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "silly-mixups", title: "Fixing Silly Mix-Ups", emoji: "\ud83d\ude43", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "best-tool", title: "The Best Tool for the Job", emoji: "\ud83d\udd27", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "needs-wants", title: "Needs and Wants", emoji: "\ud83d\uded2", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "safe-unsafe", title: "Safe or Not Safe", emoji: "\ud83e\uddba", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "real-pretend", title: "Real or Pretend", emoji: "\ud83c\udfad", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "problem-solving", title: "Everyday Problem Solving", emoji: "\ud83d\udcaa", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "point-of-view", title: "How Others Feel", emoji: "\ud83d\udc9e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "group-logic", title: "Team Thinking", emoji: "\ud83d\udc65", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "step-logic", title: "One Step at a Time", emoji: "\ud83e\ude9c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
-    { id: "brain-teasers", title: "Brain Teasers", emoji: "\ud83e\udd2f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
-]};
+window.CONTENT['reasoning'] = { id: 'reasoning', title: 'Reasoning', emoji: '💡', color: '#FF6B6B', tint: '#FFE3E3',
+concepts: [
+['if-then','If This, Then That','🔀'],['predictions','Making Predictions','🔮'],['asking-why','Asking Why','❓'],['fact-opinion','Fact or Opinion','📰'],['real-pretend','Real or Pretend','🦄'],['detective-clues','Detective Clues','🕵️'],['what-next','What Happens Next?','📖'],['solving-problems','Solving Problems','🔧'],['fair-sharing','Fair Sharing','🍕'],['rules-why','Why We Have Rules','🚦'],['safe-unsafe','Safe or Not Safe','🦺'],['needs-wants','Needs and Wants','🛒'],['first-next-last','First, Next, Last','🥇'],['comparing-choices','Comparing Choices','🤔'],['learning-mistakes','Learning from Mistakes','🌱'],['listening','Listening Carefully','👂'],['good-questions','Asking Good Questions','🙋'],['main-idea','Finding the Main Idea','⭐'],['imagination','Real World or Imagination','🎠'],['planning','Planning Ahead','🗓️'],['guess-check','Guess and Check','🎲'],['evidence','Looking at Evidence','🔬'],['taking-turns','Taking Turns Logic','🔄'],['story-patterns','Patterns in Stories','📚'],['doesnt-belong','What Doesn\u2019t Belong','🚫'],['making-groups','Making Groups','👥'],['other-views','Seeing Both Sides','👓'],['kind-choices','Making Kind Choices','💗'],['think-first','Think Before You Act','🛑'],['explain-answer','Explaining Your Answer','🗣️']
+].map(function (a) { return { id: a[0], title: a[1], emoji: a[2], video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }; }) };
