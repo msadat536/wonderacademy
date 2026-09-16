@@ -485,7 +485,9 @@
       h('button', { className: state.screen === 'rewards' ? 'on' : '', onClick: function () { go('rewards'); } }, '🏆 My Rewards')
     ));
 
-    return h('div', { className: 'app' }, shell);
+    var activeCat = nav.catId && CONTENT[nav.catId] ? CONTENT[nav.catId] : null;
+    var shellStyle = activeCat ? { '--cat': activeCat.color, '--cat-tint': activeCat.tint } : null;
+    return h('div', { className: 'app' + (activeCat ? ' themed' : ''), style: shellStyle }, shell);
   }
 
   /* ---------------- auth screens ---------------- */
@@ -777,7 +779,11 @@
         var done = 0, dm = doneMap(rows, cyc);
         playable.forEach(function (c) { if (dm[c.id]) { done++; } });
         var pct = playable.length ? Math.round(done / playable.length * 100) : 0;
-        return h('button', { key: catId, className: 'tile cat-tile', onClick: function () { props.onOpen(catId); } },
+        return h('button', {
+          key: catId, className: 'tile cat-tile' + (playable.length ? '' : ' soon'),
+          style: { background: cat.tint, borderColor: cat.color },
+          onClick: function () { props.onOpen(catId); }
+        },
           h('div', { className: 'big' }, cat.emoji),
           h('div', { className: 'name' }, cat.title),
           h('div', { className: 'meter' }, h('div', { style: { width: pct + '%', background: cat.color } })),

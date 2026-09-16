@@ -6,7 +6,7 @@ A learning app for kids with a real parent login, kid profiles, age-appropriate 
 
 - **Parent login** with a real email and password (Supabase Auth). Nobody reaches the app without signing in.
 - **Parent PIN** for the parent area, so kids who already have a signed-in tablet cannot add or delete profiles.
-- 8 categories, 30 concepts each. Science & Nature is fully written; its first 10 concepts are in the new storybook format, the other 20 are being converted wave by wave. The remaining 7 categories are scaffolded and show "coming soon".
+- 8 categories, 30 concepts each, and every category is now playable. Science & Nature has all 30 written (first 10 in storybook format). The other 7 categories each have their first 3 concepts written in full storybook format, with the remaining 27 showing "coming soon" until later waves. 51 playable concepts and 1,020 questions so far.
 - **Storybook lessons.** Each concept is a set of illustrated pages the child taps through, not one block of text, ending with a "Did you know" fact, a hands-on "Try it at home" activity, and (older tier) a new-words list.
 - **Real age separation.** The two tiers are written separately, not shortened versions of each other. Age 6 and under: 4 pages of short repetitive sentences (about 90 words), big type, giant emoji art, 3-choice questions, and pages that read themselves aloud automatically. Age 7 and up: 6 pages of genuine depth (about 280 words) with real vocabulary, numbers, and explanations, plus 4-choice questions.
 - **Separate video slots per age**, so you can point a 4-year-old and an 8-year-old at different videos for the same topic.
@@ -64,8 +64,9 @@ The app converts it to an embedded player on that concept's page.
 
 Content ships in waves so each file stays reviewable:
 
-- Wave 1 (done): app, login, and Science & Nature complete; first 10 concepts upgraded to the storybook format.
-- Wave 1b: convert the remaining 20 Science concepts to storybook format.
+- Wave 1 (done): app, login, Science complete, first 10 in storybook format.
+- Wave 2 (done): first 3 concepts of all 7 remaining categories, so every tile is playable.
+- Wave 3: deepen each category from 3 concepts toward 30, and convert the last 20 Science concepts to storybook format.
 - Next waves: Islamic History, Biology, Physics, Geography, Analytical, Reasoning, IQ.
 
 Each wave replaces one file in `content/`. Nothing else changes, and kids' progress is untouched.

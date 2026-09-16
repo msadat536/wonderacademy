@@ -237,3 +237,111 @@ input.name-input {
 @media (prefers-reduced-motion: reduce) {
   .page-in, .mascot.happy, .mascot.oops, .streak { animation: none; }
 }
+
+/* ============================================================
+   Colour, tablet and phone pass
+   ============================================================ */
+
+body {
+  background: #EAF4FF;
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(255,201,60,.30), transparent 42%),
+    radial-gradient(circle at 88% 4%, rgba(124,92,191,.24), transparent 40%),
+    radial-gradient(circle at 78% 92%, rgba(63,163,77,.22), transparent 44%),
+    radial-gradient(circle at 8% 88%, rgba(255,107,107,.22), transparent 42%),
+    radial-gradient(#d7e9fb 1.6px, transparent 1.6px);
+  background-size: auto, auto, auto, auto, 30px 30px;
+  background-attachment: fixed;
+}
+
+/* Category colour flows through a whole subject once selected */
+.app.themed .story-card,
+.app.themed .question-card { border-color: var(--cat); box-shadow: 5px 5px 0 var(--cat); }
+.app.themed .scene { border-color: var(--cat); box-shadow: 5px 5px 0 var(--cat); }
+.app.themed .step { border-color: var(--cat); box-shadow: 4px 4px 0 var(--cat); }
+.app.themed .step.done { background: var(--cat-tint); }
+.app.themed .chip { border-color: var(--cat); box-shadow: 3px 3px 0 var(--cat); }
+.app.themed .page-dots span { border-color: var(--cat); }
+.app.themed .page-dots span.seen { background: var(--cat); }
+
+/* Brighter, more distinct tiles */
+.topbar .brand {
+  background: linear-gradient(95deg, #FF6B6B, #FFC93C 38%, #3FA34D 68%, #7C5CBF);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 24px;
+}
+.cat-tile { border-width: 4px; }
+.cat-tile .big { filter: drop-shadow(2px 3px 0 rgba(34,58,94,.18)); }
+.cat-tile.soon { opacity: .82; }
+.chip.stars { background: linear-gradient(180deg, #FFF6D8, #FFE49B); }
+.btn { background-image: linear-gradient(180deg, rgba(255,255,255,.45), rgba(255,255,255,0)); }
+.choice { background: linear-gradient(180deg, #FFFFFF, #EFF6FF); }
+.scene { background-image: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0)); }
+
+/* --- Touch targets and phone sizing --- */
+.btn { min-height: 52px; }
+.choice { min-height: 60px; }
+.bottomnav button { min-height: 50px; }
+.step { min-height: 74px; }
+
+@media (max-width: 420px) {
+  .app { padding: 10px 11px 96px; }
+  .topbar .brand { font-size: 20px; }
+  .chip { font-size: 14px; padding: 4px 9px; }
+  .grid { gap: 11px; }
+  .cat-tile .big { font-size: 40px; }
+  .cat-tile .name { font-size: 15px; }
+  .scene { font-size: 52px; letter-spacing: 5px; padding: 22px 8px; }
+  .scene.big { font-size: 62px; }
+  .story-card { padding: 15px 16px; }
+  .story-card p { font-size: 18px; }
+  .story-card p.big-text { font-size: 21px; }
+  .question-card .q { font-size: 21px; }
+  .question-card .q.big-q { font-size: 24px; }
+  .choice { font-size: 18px; }
+  .path-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* --- Tablet: use the extra room instead of a stretched phone layout --- */
+@media (min-width: 700px) {
+  .app { max-width: 940px; padding: 18px 26px 110px; }
+  .topbar .brand { font-size: 30px; }
+  .chip { font-size: 18px; padding: 7px 16px; }
+  .grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .cat-tile { padding: 22px 16px; }
+  .cat-tile .big { font-size: 58px; }
+  .cat-tile .name { font-size: 20px; }
+  .scene { font-size: 92px; padding: 40px 16px; }
+  .scene.big { font-size: 110px; }
+  .story-card { padding: 26px 34px; }
+  .story-card h2 { font-size: 32px; }
+  .story-card p { font-size: 23px; line-height: 1.6; }
+  .story-card p.big-text { font-size: 30px; line-height: 1.65; }
+  .question-card { padding: 30px; }
+  .question-card .q { font-size: 30px; }
+  .question-card .q.big-q { font-size: 36px; }
+  .choices { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .choice { font-size: 23px; min-height: 76px; }
+  .path-grid { grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .btn { font-size: 22px; padding: 15px 32px; min-height: 60px; }
+  .mascot { font-size: 58px; }
+  .fact-text { font-size: 21px; }
+  .bottomnav button { font-size: 19px; padding: 11px 26px; }
+  .pinpad { max-width: 360px; }
+  .pinpad button { font-size: 30px; padding: 20px 0; }
+}
+
+/* Landscape tablet: story text beside the art instead of stacked */
+@media (min-width: 900px) and (orientation: landscape) {
+  .grid { grid-template-columns: repeat(4, 1fr); }
+  .choices.four { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Big tablets and desktop */
+@media (min-width: 1100px) {
+  .app { max-width: 1060px; }
+  .grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Keep the bottom bar clear of the iPad home indicator */
+.bottomnav { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
