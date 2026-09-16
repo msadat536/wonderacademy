@@ -146,7 +146,9 @@
     for (i = 0; i < data.profiles.length; i++) { if (data.profiles[i].id === pid) { prof = data.profiles[i]; } }
     var tier = tierOf(prof ? prof.age : 8);
     return function (con) {
-      return con[tier] && con[tier].story && con[tier].questions && con[tier].questions.length > 0;
+      var b = con[tier];
+      if (!b || !b.questions || b.questions.length === 0) { return false; }
+      return !!(b.story || (b.pages && b.pages.length > 0));
     };
   }
 
