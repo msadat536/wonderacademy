@@ -565,3 +565,29 @@ html.force-phone .anim-scene.big .as-item { font-size: 60px !important; }
 @media (prefers-reduced-motion: reduce) {
   .as-item, .as-spark { animation: none; }
 }
+
+/* Scoresheet */
+.score-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; border: 3px solid #223A5E; border-radius: 16px;
+  box-shadow: 3px 3px 0 #223A5E; padding: 10px 12px; margin-top: 8px;
+}
+.score-row.clickable { cursor: pointer; }
+.score-row .fill { flex: 1; min-width: 0; }
+.score-row .vname { display: block; font-weight: 800; font-size: 16px; }
+.score-row .vmeta { display: block; font-size: 12.5px; font-weight: 700; opacity: .65; }
+.score-row .bar {
+  display: block; height: 9px; border: 2px solid #223A5E; border-radius: 999px;
+  background: #EAF4FF; margin-top: 6px; overflow: hidden;
+}
+.score-row .bar > span { display: block; height: 100%; border-radius: 999px; }
+.pctbig { font-weight: 800; font-size: 19px; white-space: nowrap; }
+.pctbig.good { color: #2E7D32; }
+.pctbig.ok { color: #B06E00; }
+.pctbig.low { color: #C0392B; }
+.missed-box {
+  background: #FFF3CE; border: 3px solid #223A5E; border-top: 0;
+  border-radius: 0 0 16px 16px; box-shadow: 3px 3px 0 #223A5E;
+  margin: -6px 10px 8px 10px; padding: 10px 14px;
+}
+.missed-q { font-size: 15px; font-weight: 700; line-height: 1.45; margin-top: 3px; }

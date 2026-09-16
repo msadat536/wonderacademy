@@ -60,6 +60,21 @@ The service worker uses a network-first strategy, so a fresh version is picked u
 Once a device has opened the app, lessons and quizzes keep working without internet. Progress saves locally and syncs to Supabase next time the device is online. Signing in for the first time does require a connection.
 
 
+
+## Scores
+
+Parent area > Scores tab. Every quiz attempt is logged, not just best scores. Pick a child and see:
+
+- Headline numbers: quizzes taken, average score, overall percent correct, total time spent
+- By category: average and percent per subject, with a bar and an improving / slipping / steady note
+- Every quiz: a dated log of each attempt with score, round, level and time taken. Tap any row to see exactly which questions were answered wrong
+- Needs practice: concepts where the most recent score was below 7, with the missed questions listed
+- CSV export of the filtered list
+
+Filter by category and by last 7 days, last 30 days, or all time.
+
+Requires `supabase-update-4.sql` run once in the SQL Editor.
+
 ## Money rewards
 
 Parent area > Rewards tab. Set how much a new star, a Smarty Badge, and a Trophy earn (for example 0.10, 0.50, 2.00). Only new achievements pay out, so replaying a lesson cannot farm money. Each child has a wallet shown on their My Rewards screen. When you buy them something, record it as a Redeem and the wallet counts down. You can also add a Bonus for anything outside the app. Every earn, bonus, and redemption is kept in a dated history per child, stored in Supabase.

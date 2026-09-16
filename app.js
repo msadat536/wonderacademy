@@ -20,7 +20,7 @@
       var raw = localStorage.getItem(CACHE_KEY + ':' + userId);
       if (raw) { return JSON.parse(raw); }
     } catch (e) {}
-    return { profiles: [], progress: [], ledger: [] };
+    return { profiles: [], progress: [], ledger: [], attempts: [] };
   }
 
   function saveCache(userId, data) {
@@ -53,7 +53,7 @@
   /* ---------------- data ---------------- */
 
   function loadEverything(userId, cb) {
-    var out = { profiles: [], progress: [], ledger: [], settings: null, loaded: false };
+    var out = { profiles: [], progress: [], ledger: [], attempts: [], settings: null, loaded: false };
     AUTH.api('parent_settings?select=*', 'GET', null, null, function (e1, rows) {
       if (e1 && e1.status === 401) { cb('signedout', null); return; }
       if (!e1 && rows && rows[0]) { out.settings = rows[0]; }
@@ -62,18 +62,22 @@
         AUTH.api('kid_progress?select=*', 'GET', null, null, function (e3, rows2) {
           if (e3 && e3.status === 401) { cb('signedout', null); return; }
           AUTH.api('kid_ledger?select=*&order=created_at.desc', 'GET', null, null, function (e4, rows3) {
-            if (e2 || e3) {
-              var cached = loadCache(userId);
-              out.profiles = cached.profiles; out.progress = cached.progress; out.ledger = cached.ledger || [];
-              cb(null, out, true);
-              return;
-            }
-            out.profiles = profs || [];
-            out.progress = rows2 || [];
-            out.ledger = (!e4 && rows3) ? rows3 : (loadCache(userId).ledger || []);
-            out.loaded = true;
-            saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger });
-            cb(null, out, false);
+            AUTH.api('kid_attempts?select=*&order=created_at.desc&limit=2000', 'GET', null, null, function (e5, rows4) {
+              if (e2 || e3) {
+                var cached = loadCache(userId);
+                out.profiles = cached.profiles; out.progress = cached.progress;
+                out.ledger = cached.ledger || []; out.attempts = cached.attempts || [];
+                cb(null, out, true);
+                return;
+              }
+              out.profiles = profs || [];
+              out.progress = rows2 || [];
+              out.ledger = (!e4 && rows3) ? rows3 : (loadCache(userId).ledger || []);
+              out.attempts = (!e5 && rows4) ? rows4 : (loadCache(userId).attempts || []);
+              out.loaded = true;
+              saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger, attempts: out.attempts });
+              cb(null, out, false);
+            });
           });
         });
       });
@@ -95,6 +99,17 @@
         if (!err && out && out[0]) { cb(null, out[0]); }
         else { cb(err || { message: 'Could not save' }, null); }
       });
+  }
+
+  function addAttempt(userId, row, cb) {
+    AUTH.api('kid_attempts', 'POST', {
+      owner_id: userId, profile_id: row.profile_id, category: row.category,
+      concept_id: row.concept_id, concept_title: row.concept_title, cycle: row.cycle,
+      tier: row.tier, score: row.score, total: row.total,
+      missed: JSON.stringify(row.missed || []), seconds: row.seconds || 0
+    }, { 'Prefer': 'return=representation' }, function (err, out) {
+      if (!err && out && out[0]) { cb(null, out[0]); } else { cb(err || { message: 'failed' }, null); }
+    });
   }
 
   function money(cents, cur) {
@@ -397,7 +412,7 @@
 
   function App() {
     var st = React.useState({
-      screen: 'loading', data: { profiles: [], progress: [], ledger: [] },
+      screen: 'loading', data: { profiles: [], progress: [], ledger: [], attempts: [] },
       pinHash: null, settings: {}, session: null, offline: false, notice: ''
     });
     React.useEffect(function () { applyUiPref(); }, []);
@@ -435,7 +450,7 @@
           update({ screen: 'login', session: null, notice: 'Please sign in again.' });
           return;
         }
-        var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [] };
+        var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [], attempts: out.attempts || [] };
         var st0 = out.settings || {};
         try { setVideoMap(st0.video_map ? JSON.parse(st0.video_map) : {}); } catch (e) { setVideoMap({}); }
         if (st0.pron_overrides || st0.honorific_mode) {
@@ -470,7 +485,7 @@
       AUTH.signOut();
       setPid(null);
       setState({
-        screen: 'login', data: { profiles: [], progress: [], ledger: [] },
+        screen: 'login', data: { profiles: [], progress: [], ledger: [], attempts: [] },
         pinHash: null, settings: {}, session: null, offline: false, notice: ''
       });
     }
@@ -496,7 +511,7 @@
     function onLedger(row, done) {
       addLedger(state.session.user_id, row, function (err, saved) {
         if (err) { done('Could not save. Check your connection.'); return; }
-        var next = { profiles: state.data.profiles, progress: state.data.progress, ledger: [saved].concat(state.data.ledger) };
+        var next = { profiles: state.data.profiles, progress: state.data.progress, attempts: state.data.attempts, ledger: [saved].concat(state.data.ledger) };
         saveCache(state.session.user_id, next);
         update({ data: next });
         done(null);
@@ -506,7 +521,7 @@
     function onAddProfile(name, age, avatar, done) {
       createProfile(state.session.user_id, { name: name, age: age, avatar: avatar }, function (err, saved) {
         if (err) { done('Could not save. Check your connection.'); return; }
-        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress, ledger: state.data.ledger };
+        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress, ledger: state.data.ledger, attempts: state.data.attempts };
         saveCache(state.session.user_id, next);
         update({ data: next });
         done(null);
@@ -519,14 +534,15 @@
         var next = {
           profiles: state.data.profiles.filter(function (p) { return p.id !== id; }),
           progress: state.data.progress.filter(function (r) { return r.profile_id !== id; }),
-          ledger: state.data.ledger.filter(function (r) { return r.profile_id !== id; })
+          ledger: state.data.ledger.filter(function (r) { return r.profile_id !== id; }),
+          attempts: state.data.attempts.filter(function (r) { return r.profile_id !== id; })
         };
         saveCache(state.session.user_id, next);
         update({ data: next, notice: '' });
       });
     }
 
-    function recordResult(catId, conceptId, cycle, correct) {
+    function recordResult(catId, conceptId, cycle, correct, detail) {
       var cat = CONTENT[catId];
       var con = null, i, r;
       for (i = 0; i < cat.concepts.length; i++) { if (cat.concepts[i].id === conceptId) { con = cat.concepts[i]; } }
@@ -549,9 +565,34 @@
         found = { profile_id: pid, category: catId, concept_id: conceptId, cycle: cycle, best_score: correct, stars: correct };
         rows.push(found);
       }
-      var next = { profiles: state.data.profiles, progress: rows, ledger: state.data.ledger };
+      var next = { profiles: state.data.profiles, progress: rows, ledger: state.data.ledger, attempts: state.data.attempts };
       saveCache(state.session.user_id, next);
       persistProgress(state.session.user_id, found);
+
+      /* Log this attempt, every time, not just the best one. */
+      var att = {
+        id: 'local-a-' + Date.now(), profile_id: pid, category: catId, concept_id: conceptId,
+        concept_title: (detail && detail.conceptTitle) || con.title, cycle: cycle,
+        tier: (detail && detail.tier) || tierOf(profile ? profile.age : 8),
+        score: correct, total: (detail && detail.total) || 10,
+        missed: JSON.stringify((detail && detail.missed) || []),
+        seconds: (detail && detail.seconds) || 0,
+        created_at: new Date().toISOString()
+      };
+      next.attempts = [att].concat(state.data.attempts);
+      addAttempt(state.session.user_id, {
+        profile_id: pid, category: catId, concept_id: conceptId,
+        concept_title: att.concept_title, cycle: cycle, tier: att.tier,
+        score: correct, total: att.total, missed: (detail && detail.missed) || [], seconds: att.seconds
+      }, function (err, saved) {
+        if (!err && saved) {
+          setState(function (s2) {
+            var list = s2.data.attempts.map(function (x) { return x.id === att.id ? saved : x; });
+            var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, ledger: s2.data.ledger, attempts: list };
+            var n2 = {}, k; for (k in s2) { n2[k] = s2[k]; } n2.data = d2; return n2;
+          });
+        }
+      });
 
       /* money: only NEW stars, badges and trophies earn */
       var st = state.settings || {};
@@ -573,7 +614,7 @@
           if (!err && saved) {
             setState(function (s2) {
               var led = s2.data.ledger.map(function (x) { return x.id === localRow.id ? saved : x; });
-              var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, ledger: led };
+              var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, attempts: s2.data.attempts, ledger: led };
               var n2 = {}, k; for (k in s2) { n2[k] = s2[k]; } n2.data = d2; return n2;
             });
           }
@@ -647,7 +688,7 @@
     } else if (state.screen === 'quiz') {
       shell.push(h(QuizScreen, {
         key: 'quiz', data: state.data, pid: pid, profile: profile, catId: nav.catId, conceptId: nav.conceptId,
-        onDone: function (correct, cycle) { window.__lastScore = correct; recordResult(nav.catId, nav.conceptId, cycle, correct); go('results'); },
+        onDone: function (correct, cycle, detail) { window.__lastScore = correct; recordResult(nav.catId, nav.conceptId, cycle, correct, detail); go('results'); },
         onQuit: function () { go('concept'); }
       }));
     } else if (state.screen === 'results') {
@@ -830,7 +871,7 @@
       );
     }
 
-    var tabs = [['profiles', '👧 Profiles'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['words', '🗣️ Words'], ['videos', '🎬 Videos'], ['account', '⚙️ Account']];
+    var tabs = [['profiles', '👧 Profiles'], ['scores', '📊 Scores'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['words', '🗣️ Words'], ['videos', '🎬 Videos'], ['account', '⚙️ Account']];
 
     return h('div', { className: 'app' },
       h('div', { className: 'backrow' },
@@ -843,6 +884,7 @@
         return h('button', { key: t[0], className: tab === t[0] ? 'on' : '', onClick: function () { setTab(t[0]); } }, t[1]);
       })),
       tab === 'profiles' ? h(ProfilesTab, props) : null,
+      tab === 'scores' ? h(ScoresTab, props) : null,
       tab === 'money' ? h(MoneyTab, props) : null,
       tab === 'voice' ? h(VoiceTab, null) : null,
       tab === 'words' ? h(WordsTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
@@ -920,6 +962,196 @@
             ))
         : h('div', { className: 'actionrow' },
             h('button', { className: 'btn', onClick: function () { setShowAdd(true); } }, '➕ Add a profile'))
+    );
+  }
+
+  function ScoresTab(props) {
+    var kidSt = React.useState(props.data.profiles.length ? props.data.profiles[0].id : null);
+    var kid = kidSt[0], setKid = kidSt[1];
+    var catSt = React.useState('all'); var catFilter = catSt[0], setCatFilter = catSt[1];
+    var rangeSt = React.useState('all'); var range = rangeSt[0], setRange = rangeSt[1];
+    var openSt = React.useState(null); var open = openSt[0], setOpen = openSt[1];
+    var viewSt = React.useState('summary'); var view = viewSt[0], setView = viewSt[1];
+
+    var all = (props.data.attempts || []).filter(function (a) { return a.profile_id === kid; });
+
+    var cutoff = 0;
+    if (range === '7') { cutoff = Date.now() - 7 * 86400000; }
+    else if (range === '30') { cutoff = Date.now() - 30 * 86400000; }
+
+    var rows = all.filter(function (a) {
+      if (catFilter !== 'all' && a.category !== catFilter) { return false; }
+      if (cutoff && new Date(a.created_at).getTime() < cutoff) { return false; }
+      return true;
+    });
+
+    function pct(s, t) { return t ? Math.round(s / t * 100) : 0; }
+
+    var totalScore = 0, totalMax = 0, best = null, worst = null, secs = 0;
+    rows.forEach(function (a) {
+      totalScore += a.score; totalMax += a.total; secs += (a.seconds || 0);
+      if (best === null || a.score > best.score) { best = a; }
+      if (worst === null || a.score < worst.score) { worst = a; }
+    });
+    var avg = rows.length ? (totalScore / rows.length) : 0;
+
+    /* per category rollup */
+    var byCat = {};
+    rows.forEach(function (a) {
+      if (!byCat[a.category]) { byCat[a.category] = { n: 0, score: 0, max: 0, first: null, last: null }; }
+      var c = byCat[a.category];
+      c.n++; c.score += a.score; c.max += a.total;
+      var t = new Date(a.created_at).getTime();
+      if (c.first === null || t < c.first.t) { c.first = { t: t, s: a.score }; }
+      if (c.last === null || t > c.last.t) { c.last = { t: t, s: a.score }; }
+    });
+
+    /* weakest concepts by most recent score */
+    var latestByConcept = {};
+    all.slice().reverse().forEach(function (a) { latestByConcept[a.category + '/' + a.concept_id] = a; });
+    var weak = [];
+    var kk;
+    for (kk in latestByConcept) { if (latestByConcept[kk].score < 7) { weak.push(latestByConcept[kk]); } }
+    weak.sort(function (a, b) { return a.score - b.score; });
+
+    function missedText(a) {
+      var idx = [];
+      try { idx = JSON.parse(a.missed || '[]'); } catch (e) {}
+      if (!idx.length) { return null; }
+      var cat = CONTENT[a.category];
+      if (!cat) { return idx.length + ' missed'; }
+      var con = null, i;
+      for (i = 0; i < cat.concepts.length; i++) { if (cat.concepts[i].id === a.concept_id) { con = cat.concepts[i]; } }
+      if (!con || !con[a.tier] || !con[a.tier].questions) { return idx.length + ' missed'; }
+      var qs = con[a.tier].questions;
+      return idx.map(function (n) { return qs[n] ? qs[n].q : 'Question ' + (n + 1); });
+    }
+
+    function when(a) {
+      var d = new Date(a.created_at);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function exportCsv() {
+      var head = ['Date', 'Child', 'Category', 'Lesson', 'Round', 'Level', 'Score', 'Out of', 'Percent', 'Seconds'];
+      var prof = null, i;
+      for (i = 0; i < props.data.profiles.length; i++) { if (props.data.profiles[i].id === kid) { prof = props.data.profiles[i]; } }
+      var lines = [head.join(',')];
+      rows.forEach(function (a) {
+        var cat = CONTENT[a.category];
+        lines.push([
+          '"' + when(a) + '"',
+          '"' + (prof ? prof.name : '') + '"',
+          '"' + (cat ? cat.title : a.category) + '"',
+          '"' + (a.concept_title || a.concept_id).replace(/"/g, '""') + '"',
+          a.cycle, a.tier, a.score, a.total, pct(a.score, a.total), a.seconds || 0
+        ].join(','));
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'wonder-scores-' + (prof ? prof.name : 'kid') + '.csv';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    var cats = ['all'].concat(CAT_ORDER.filter(function (c) { return CONTENT[c]; }));
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Scores'),
+      props.data.profiles.length === 0
+        ? h('div', { className: 'coming' }, 'Add a profile first.')
+        : h('div', null,
+          h('div', { className: 'tabs small' }, props.data.profiles.map(function (p) {
+            return h('button', { key: p.id, className: kid === p.id ? 'on' : '', onClick: function () { setKid(p.id); setOpen(null); } },
+              p.avatar + ' ' + p.name);
+          })),
+          h('div', { className: 'tabs small', style: { marginTop: '8px' } },
+            h('button', { className: range === 'all' ? 'on' : '', onClick: function () { setRange('all'); } }, 'All time'),
+            h('button', { className: range === '30' ? 'on' : '', onClick: function () { setRange('30'); } }, 'Last 30 days'),
+            h('button', { className: range === '7' ? 'on' : '', onClick: function () { setRange('7'); } }, 'Last 7 days')),
+          h('select', { className: 'select', style: { marginTop: '8px' }, value: catFilter, onChange: function (e) { setCatFilter(e.target.value); } },
+            cats.map(function (c) {
+              return h('option', { key: c, value: c }, c === 'all' ? 'All categories' : (CONTENT[c].emoji + ' ' + CONTENT[c].title));
+            })),
+
+          rows.length === 0
+            ? h('div', { className: 'coming' }, 'No quizzes taken yet for this filter.')
+            : h('div', null,
+              h('div', { className: 'badge-row', style: { marginTop: '14px' } },
+                h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, rows.length), h('div', { className: 'lbl' }, 'Quizzes taken')),
+                h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, avg.toFixed(1) + '/10'), h('div', { className: 'lbl' }, 'Average score')),
+                h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, pct(totalScore, totalMax) + '%'), h('div', { className: 'lbl' }, 'Overall correct')),
+                h('div', { className: 'tile badge-card' }, h('div', { className: 'n' }, Math.round(secs / 60) + 'm'), h('div', { className: 'lbl' }, 'Time on quizzes'))
+              ),
+
+              h('div', { className: 'tabs small', style: { marginTop: '14px' } },
+                h('button', { className: view === 'summary' ? 'on' : '', onClick: function () { setView('summary'); } }, 'By category'),
+                h('button', { className: view === 'log' ? 'on' : '', onClick: function () { setView('log'); } }, 'Every quiz'),
+                h('button', { className: view === 'weak' ? 'on' : '', onClick: function () { setView('weak'); } }, 'Needs practice'),
+                h('button', { className: 'plain', onClick: exportCsv }, '⬇ CSV')),
+
+              view === 'summary' ? h('div', { style: { marginTop: '10px' } },
+                CAT_ORDER.filter(function (c) { return byCat[c]; }).map(function (c) {
+                  var d = byCat[c], cat = CONTENT[c];
+                  var p = pct(d.score, d.max);
+                  var trend = d.last.s - d.first.s;
+                  return h('div', { key: c, className: 'score-row' },
+                    h('span', { className: 'em2' }, cat.emoji),
+                    h('span', { className: 'fill' },
+                      h('span', { className: 'vname' }, cat.title),
+                      h('span', { className: 'vmeta' }, d.n + ' quiz' + (d.n === 1 ? '' : 'zes') + ' · avg ' + (d.score / d.n).toFixed(1) + '/10' +
+                        (d.n > 1 ? (trend > 0 ? ' · improving' : (trend < 0 ? ' · slipping' : ' · steady')) : '')),
+                      h('span', { className: 'bar' }, h('span', { style: { width: p + '%', background: cat.color } }))),
+                    h('span', { className: 'pctbig ' + (p >= 80 ? 'good' : (p >= 60 ? 'ok' : 'low')) }, p + '%'));
+                })) : null,
+
+              view === 'log' ? h('div', { style: { marginTop: '10px' } },
+                rows.map(function (a) {
+                  var cat = CONTENT[a.category];
+                  var p = pct(a.score, a.total);
+                  var miss = missedText(a);
+                  var isOpen = open === a.id;
+                  return h('div', { key: a.id },
+                    h('div', { className: 'score-row clickable', onClick: function () { setOpen(isOpen ? null : a.id); } },
+                      h('span', { className: 'em2' }, cat ? cat.emoji : '📘'),
+                      h('span', { className: 'fill' },
+                        h('span', { className: 'vname' }, a.concept_title || a.concept_id),
+                        h('span', { className: 'vmeta' }, when(a) + ' · ' + (cat ? cat.title : a.category) +
+                          ' · round ' + a.cycle + ' · ' + (a.tier === 'young' ? 'easy' : 'older') +
+                          (a.seconds ? ' · ' + a.seconds + 's' : ''))),
+                      h('span', { className: 'pctbig ' + (p >= 80 ? 'good' : (p >= 60 ? 'ok' : 'low')) }, a.score + '/' + a.total)),
+                    isOpen && miss ? h('div', { className: 'missed-box' },
+                      h('div', { className: 'fact-lbl' }, 'Got wrong:'),
+                      (typeof miss === 'string' ? [miss] : miss).map(function (m, mi) {
+                        return h('div', { key: mi, className: 'missed-q' }, '• ' + m);
+                      })) : null,
+                    isOpen && !miss ? h('div', { className: 'missed-box' }, h('div', { className: 'fact-lbl' }, '🎉 Perfect score, nothing missed.')) : null);
+                })) : null,
+
+              view === 'weak' ? h('div', { style: { marginTop: '10px' } },
+                weak.length === 0
+                  ? h('div', { className: 'coming' }, 'Nothing below 7 out of 10. Everything looks solid.')
+                  : h('div', null,
+                    h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '6px' } },
+                      'Most recent score below 7. Worth revisiting these together.'),
+                    weak.map(function (a) {
+                      var cat = CONTENT[a.category];
+                      var miss = missedText(a);
+                      return h('div', { key: a.category + a.concept_id },
+                        h('div', { className: 'score-row' },
+                          h('span', { className: 'em2' }, cat ? cat.emoji : '📘'),
+                          h('span', { className: 'fill' },
+                            h('span', { className: 'vname' }, a.concept_title || a.concept_id),
+                            h('span', { className: 'vmeta' }, (cat ? cat.title : a.category) + ' · last tried ' + when(a))),
+                          h('span', { className: 'pctbig low' }, a.score + '/' + a.total)),
+                        miss ? h('div', { className: 'missed-box' },
+                          (typeof miss === 'string' ? [miss] : miss).map(function (m, mi) {
+                            return h('div', { key: mi, className: 'missed-q' }, '• ' + m);
+                          })) : null);
+                    }))) : null
+            ))
     );
   }
 
@@ -1559,6 +1791,8 @@
     var ansSt = React.useState([]); var answers = ansSt[0], setAnswers = ansSt[1];
     var pickSt = React.useState(null); var picked = pickSt[0], setPicked = pickSt[1];
     var streakSt = React.useState(0); var streak = streakSt[0], setStreak = streakSt[1];
+    var missedRef = React.useRef([]);
+    var startRef = React.useRef(Date.now());
 
     var ok = hasContentFor(props.data, props.pid, cat);
     var playable = cat.concepts.filter(ok);
@@ -1587,6 +1821,7 @@
       setStreak(correct ? streak + 1 : 0);
       sfx(correct ? 'good' : 'bad');
       if (shouldAutoRead(tier)) { speak(correct ? 'Yes! Great job!' : 'Good try! The answer was ' + q.choices[q.answer] + '.'); }
+      if (!correct) { missedRef.current = missedRef.current.concat([pos]); }
       setTimeout(function () {
         var nextAnswers = answers.concat([correct]);
         setAnswers(nextAnswers);
@@ -1595,7 +1830,11 @@
         else {
           var score = 0, j;
           for (j = 0; j < nextAnswers.length; j++) { if (nextAnswers[j]) { score++; } }
-          props.onDone(score, cycleForSave);
+          props.onDone(score, cycleForSave, {
+            missed: missedRef.current,
+            seconds: Math.round((Date.now() - startRef.current) / 1000),
+            tier: tier, total: qs.length, conceptTitle: con.title
+          });
         }
       }, correct ? 900 : 1600);
     }
