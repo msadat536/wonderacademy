@@ -401,11 +401,19 @@
     return a;
   }
 
-  function ytEmbed(url) {
+  function ytId(url) {
     if (!url) { return null; }
-    var m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{6,})/);
-    if (m) { return 'https://www.youtube.com/embed/' + m[1]; }
-    return url;
+    var u = String(url).trim();
+    var m = u.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtube\.com\/live\/|youtube-nocookie\.com\/embed\/)([A-Za-z0-9_-]{6,})/);
+    if (m) { return m[1]; }
+    if (/^[A-Za-z0-9_-]{11}$/.test(u)) { return u; }
+    return null;
+  }
+
+  function ytEmbed(url) {
+    var id = ytId(url);
+    if (id) { return 'https://www.youtube.com/embed/' + id + '?rel=0&modestbranding=1'; }
+    return url || null;
   }
 
   /* ---------------- app ---------------- */
@@ -1526,14 +1534,16 @@
               h('span', { className: 'vname' }, con.emoji + ' ' + con.title),
               h('input', { className: 'rate-input', style: { width: '100%', textAlign: 'left', marginTop: '6px' },
                 value: val, autoFocus: true, placeholder: 'Paste YouTube link',
-                onChange: function (e) { setVal(e.target.value); } })),
+                onChange: function (e) { setVal(e.target.value); } }),
+              h('span', { className: 'vmeta' },
+                val.trim() ? (ytId(val) ? '✓ video ' + ytId(val) : '⚠ link not recognised, paste the full youtube.com or youtu.be address') : '')),
             h('button', { className: 'btn small green', onClick: function () { save(key, val.trim()); } }, 'Save'),
             h('button', { className: 'btn small plain', onClick: function () { setEdit(null); setVal(''); } }, '✕'));
         }
         return h('div', { key: con.id, className: 'voice-row' + (have ? ' sel' : '') },
           h('span', { className: 'fill' },
             h('span', { className: 'vname' }, con.emoji + ' ' + con.title),
-            h('span', { className: 'vmeta' }, have ? '🎬 video added' : 'no video yet')),
+            h('span', { className: 'vmeta' }, have ? ('🎬 ' + (ytId(have) ? 'video ' + ytId(have) : 'link saved')) : 'no video yet')),
           h('a', { className: 'btn small plain', href: searchUrl(con), target: '_blank', rel: 'noopener' }, 'Find'),
           h('button', { className: 'btn small ' + (have ? 'grape' : 'plain'), onClick: function () { setEdit(key); setVal(have || ''); } },
             have ? 'Change' : 'Add'),
@@ -1678,15 +1688,19 @@
     var body = con[tier];
     var pages = pagesFor(con, tier);
     var vid = videoFor(con, tier, props.catId);
-    var extras = !!(body.funFact || body.tryThis || (body.words && body.words.length) || vid);
-    var last = pages.length + (extras ? 1 : 0) - 1;
+    var extras = !!(body.funFact || body.tryThis || (body.words && body.words.length));
+    var videoPage = vid ? 1 : 0;
+    var last = pages.length + (extras ? 1 : 0) + videoPage - 1;
+    var videoIdx = pages.length + (extras ? 1 : 0);
 
     var pageSt = React.useState(0); var page = pageSt[0], setPage = pageSt[1];
     var readSt = React.useState(false); var reading = readSt[0], setReading = readSt[1];
     var readAllRef = React.useRef(shouldAutoRead(tier));
     var onExtras = extras && page === pages.length;
+    var onVideo = vid && page === videoIdx;
 
     function textFor(p) {
+      if (vid && p === videoIdx) { return 'Here is a video about ' + con.title + '.'; }
       if (p < pages.length) { return pages[p].text; }
       var t = [];
       if (body.funFact) { t.push((young ? 'Wow! ' : 'Did you know? ') + body.funFact); }
@@ -1726,7 +1740,19 @@
     }
 
     var content;
-    if (onExtras) {
+    if (onVideo) {
+      content = h('div', { className: 'page-in' },
+        h('div', { className: 'story-card' },
+          h('h2', null, '🎬 Watch: ' + con.title)),
+        h('div', { className: 'video-wrap' },
+          h('iframe', {
+            src: ytEmbed(vid), allowFullScreen: true, title: con.title,
+            allow: 'accelerometer; clipboard-write; encrypted-media; picture-in-picture'
+          })),
+        h('div', { style: { textAlign: 'center', marginTop: '10px' } },
+          h('a', { className: 'btn plain small', href: vid, target: '_blank', rel: 'noopener' }, 'Open on YouTube'))
+      );
+    } else if (onExtras) {
       content = h('div', null,
         body.funFact ? h('div', { className: 'fact-card' },
           h('div', { className: 'fact-em' }, '💡'),
@@ -1763,11 +1789,14 @@
       ),
       h('div', { className: 'page-dots' }, pages.map(function (_, idx) {
         return h('span', { key: idx, className: idx === page ? 'cur' : (idx < page ? 'seen' : '') });
-      }).concat(extras ? [h('span', { key: 'x', className: onExtras ? 'cur' : '' }, '')] : [])),
+      })
+        .concat(extras ? [h('span', { key: 'x', className: onExtras ? 'cur' : (page > pages.length ? 'seen' : '') })] : [])
+        .concat(vid ? [h('span', { key: 'v', className: 'vid ' + (onVideo ? 'cur' : '') })] : [])),
       content,
       h('div', { className: 'actionrow' },
         page > 0 ? h('button', { className: 'btn plain', onClick: function () { goPage(page - 1); } }, '◀ Back') : null,
-        h('button', { className: 'btn grape', onClick: toggleRead }, reading ? '⏹ Stop reading' : '🔊 Read to me'),
+        vid && !onVideo ? h('button', { className: 'btn', style: { background: '#FFB3B3' }, onClick: function () { goPage(videoIdx); } }, '🎬 Video') : null,
+        !onVideo ? h('button', { className: 'btn grape', onClick: toggleRead }, reading ? '⏹ Stop reading' : '🔊 Read to me') : null,
         page < last
           ? h('button', { className: 'btn', onClick: function () { goPage(page + 1); } }, young ? 'Next ▶' : 'Keep going ▶')
           : h('button', { className: 'btn green', onClick: function () { stopSpeak(); sfx('pop'); props.onQuiz(); } }, '🎯 Quiz time!')
