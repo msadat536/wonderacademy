@@ -161,6 +161,95 @@
     return n;
   }
 
+  /* ---------------- content helpers (format v2 with fallback) ---------------- */
+
+  function pagesFor(con, tier) {
+    var b = con[tier];
+    if (b && b.pages && b.pages.length) { return b.pages; }
+    return [{ art: (con.scene || [con.emoji]).join(' '), text: (b && b.story) || '' }];
+  }
+
+  function videoFor(con, tier) {
+    if (!con.video) { return null; }
+    if (typeof con.video === 'string') { return con.video || null; }
+    return con.video[tier] || con.video.both || null;
+  }
+
+  /* ---------------- sound effects ---------------- */
+
+  var AC = null;
+  function audioCtx() {
+    if (AC) { return AC; }
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) { return null; }
+    try { AC = new Ctx(); } catch (e) { AC = null; }
+    return AC;
+  }
+
+  function tone(freq, start, dur, type, vol) {
+    var ctx = audioCtx();
+    if (!ctx) { return; }
+    var osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+    gain.gain.exponentialRampToValueAtTime(vol || 0.16, ctx.currentTime + start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.03);
+  }
+
+  function sfx(kind) {
+    if (kind === 'good') { tone(660, 0, 0.13); tone(880, 0.1, 0.18); }
+    else if (kind === 'bad') { tone(280, 0, 0.16, 'triangle'); tone(200, 0.12, 0.2, 'triangle'); }
+    else if (kind === 'pop') { tone(520, 0, 0.08, 'square', 0.08); }
+    else if (kind === 'page') { tone(440, 0, 0.07, 'sine', 0.07); }
+    else if (kind === 'win') { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.22); }); }
+    else if (kind === 'trophy') { [523, 659, 784, 1047, 1319].forEach(function (f, i) { tone(f, i * 0.1, 0.3); }); }
+  }
+
+  function reduceMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  /* ---------------- confetti ---------------- */
+
+  function Confetti(props) {
+    var ref = React.useRef(null);
+    React.useEffect(function () {
+      var canvas = ref.current;
+      if (!canvas || reduceMotion()) { return; }
+      var ctx = canvas.getContext('2d');
+      var w = canvas.width = canvas.offsetWidth;
+      var hh = canvas.height = canvas.offsetHeight;
+      var colors = ['#FFC93C', '#FF6B6B', '#3FA34D', '#7C5CBF', '#2D9CDB'];
+      var bits = [], i, raf = null, frames = 0;
+      for (i = 0; i < (props.many ? 90 : 55); i++) {
+        bits.push({
+          x: Math.random() * w, y: -20 - Math.random() * hh,
+          vy: 1.6 + Math.random() * 2.6, vx: -1 + Math.random() * 2,
+          s: 5 + Math.random() * 7, c: colors[i % colors.length],
+          rot: Math.random() * 6, vr: -0.14 + Math.random() * 0.28
+        });
+      }
+      function frame() {
+        frames++;
+        ctx.clearRect(0, 0, w, hh);
+        bits.forEach(function (b) {
+          b.y += b.vy; b.x += b.vx; b.rot += b.vr;
+          ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+          ctx.fillStyle = b.c; ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * 0.6);
+          ctx.restore();
+        });
+        if (frames < 190) { raf = window.requestAnimationFrame(frame); }
+        else { ctx.clearRect(0, 0, w, hh); }
+      }
+      raf = window.requestAnimationFrame(frame);
+      return function () { if (raf) { window.cancelAnimationFrame(raf); } };
+    }, []);
+    return h('canvas', { ref: ref, className: 'confetti' });
+  }
+
   /* ---------------- speech ---------------- */
 
   function speak(text, onEnd) {
@@ -739,30 +828,87 @@
     var con = null, i;
     for (i = 0; i < cat.concepts.length; i++) { if (cat.concepts[i].id === props.conceptId) { con = cat.concepts[i]; } }
     var tier = tierOf(props.profile.age);
+    var young = tier === 'young';
     var body = con[tier];
+    var pages = pagesFor(con, tier);
+    var vid = videoFor(con, tier);
+    var extras = !!(body.funFact || body.tryThis || (body.words && body.words.length) || vid);
+    var last = pages.length + (extras ? 1 : 0) - 1;
+
+    var pageSt = React.useState(0); var page = pageSt[0], setPage = pageSt[1];
     var readSt = React.useState(false); var reading = readSt[0], setReading = readSt[1];
+    var onExtras = extras && page === pages.length;
+
+    function readPage(p) {
+      if (p >= pages.length) { return; }
+      setReading(true);
+      speak(pages[p].text, function () { setReading(false); });
+    }
+
+    /* Little kids get the page read to them automatically. */
+    React.useEffect(function () {
+      if (young && !onExtras) { readPage(page); }
+      return function () { stopSpeak(); };
+    }, [page]);
+
     React.useEffect(function () { return function () { stopSpeak(); }; }, []);
-    var vid = ytEmbed(con.video);
+
+    function goPage(n) {
+      stopSpeak(); setReading(false); sfx('page'); setPage(n);
+    }
+
+    var content;
+    if (onExtras) {
+      content = h('div', null,
+        body.funFact ? h('div', { className: 'fact-card' },
+          h('div', { className: 'fact-em' }, '💡'),
+          h('div', null, h('div', { className: 'fact-lbl' }, young ? 'Wow!' : 'Did you know?'),
+            h('div', { className: 'fact-text' }, body.funFact))) : null,
+        body.tryThis ? h('div', { className: 'fact-card try' },
+          h('div', { className: 'fact-em' }, '🧪'),
+          h('div', null, h('div', { className: 'fact-lbl' }, 'Try it at home'),
+            h('div', { className: 'fact-text' }, body.tryThis))) : null,
+        body.words && body.words.length ? h('div', { className: 'story-card' },
+          h('h2', null, '📚 New words'),
+          h('div', null, body.words.map(function (w, wi) {
+            return h('div', { key: wi, className: 'word-row' },
+              h('span', { className: 'word-w' }, w.word),
+              h('span', { className: 'word-m' }, w.meaning));
+          }))) : null,
+        vid ? h('div', { className: 'video-wrap' }, h('iframe', { src: ytEmbed(vid), allowFullScreen: true, title: con.title })) : null
+      );
+    } else {
+      var p = pages[page];
+      content = h('div', { key: 'p' + page, className: 'page-in' },
+        h('div', { className: 'scene' + (young ? ' big' : ''), style: { background: cat.tint || '#fff' } }, p.art),
+        h('div', { className: 'story-card' },
+          h('h2', null, con.emoji + ' ' + con.title),
+          h('p', { className: young ? 'big-text' : '' }, p.text)
+        )
+      );
+    }
+
     return h('div', null,
       h('div', { className: 'backrow' },
         h('button', { className: 'btn plain small', onClick: props.onBack }, '← Back'),
         h('div', { className: 'chip' }, cat.emoji + ' ' + cat.title)
       ),
-      h('div', { className: 'scene', style: { background: cat.tint || '#fff' } }, (con.scene || [con.emoji]).join(' ')),
-      h('div', { className: 'story-card' },
-        h('h2', null, con.emoji + ' ' + con.title),
-        h('p', null, body.story)
-      ),
-      vid ? h('div', { className: 'video-wrap' }, h('iframe', { src: vid, allowFullScreen: true, title: con.title })) : null,
+      h('div', { className: 'page-dots' }, pages.map(function (_, idx) {
+        return h('span', { key: idx, className: idx === page ? 'cur' : (idx < page ? 'seen' : '') });
+      }).concat(extras ? [h('span', { key: 'x', className: onExtras ? 'cur' : '' }, '')] : [])),
+      content,
       h('div', { className: 'actionrow' },
-        h('button', {
+        page > 0 ? h('button', { className: 'btn plain', onClick: function () { goPage(page - 1); } }, '◀ Back') : null,
+        !onExtras ? h('button', {
           className: 'btn grape',
           onClick: function () {
             if (reading) { stopSpeak(); setReading(false); }
-            else { setReading(true); speak(con.title + '. ' + body.story, function () { setReading(false); }); }
+            else { readPage(page); }
           }
-        }, reading ? '⏹ Stop' : '🔊 Read to me'),
-        h('button', { className: 'btn green', onClick: props.onQuiz }, '🎯 Quiz time!')
+        }, reading ? '⏹ Stop' : '🔊 Read to me') : null,
+        page < last
+          ? h('button', { className: 'btn', onClick: function () { goPage(page + 1); } }, young ? 'Next ▶' : 'Keep going ▶')
+          : h('button', { className: 'btn green', onClick: function () { stopSpeak(); sfx('pop'); props.onQuiz(); } }, '🎯 Quiz time!')
       )
     );
   }
@@ -782,6 +928,7 @@
     var posSt = React.useState(0); var pos = posSt[0], setPos = posSt[1];
     var ansSt = React.useState([]); var answers = ansSt[0], setAnswers = ansSt[1];
     var pickSt = React.useState(null); var picked = pickSt[0], setPicked = pickSt[1];
+    var streakSt = React.useState(0); var streak = streakSt[0], setStreak = streakSt[1];
 
     var ok = hasContentFor(props.data, props.pid, cat);
     var playable = cat.concepts.filter(ok);
@@ -799,6 +946,8 @@
       var realIdx = plan.order[dispIdx];
       var correct = realIdx === q.answer;
       setPicked({ dispIdx: dispIdx, correct: correct });
+      setStreak(correct ? streak + 1 : 0);
+      sfx(correct ? 'good' : 'bad');
       if (young && window.speechSynthesis) { speak(correct ? 'Yes! Great job!' : 'Good try!'); }
       setTimeout(function () {
         var nextAnswers = answers.concat([correct]);
@@ -829,8 +978,11 @@
         else if (idx === pos) { cls = 'cur'; }
         return h('span', { key: idx, className: cls });
       })),
+      streak >= 3 ? h('div', { className: 'streak' }, '🔥 ' + streak + ' in a row!') : null,
       h('div', { className: 'question-card' },
-        h('div', { className: 'q' }, q.q),
+        h('div', { className: 'mascot ' + (picked === null ? '' : (picked.correct ? 'happy' : 'oops')) },
+          picked === null ? '🦉' : (picked.correct ? '🥳' : '🤔')),
+        h('div', { className: 'q' + (young ? ' big-q' : '') }, q.q),
         young ? h('button', {
           className: 'btn plain small', style: { marginTop: '10px' },
           onClick: function () { speak(q.q + '. ' + plan.order.map(function (ri) { return q.choices[ri]; }).join('. ')); }
@@ -866,7 +1018,10 @@
     var msg = s >= 8 ? 'You earned a Smarty Badge! 🏅' : (s >= 5 ? 'Great learning!' : 'Practice makes perfect!');
     var starStr = '', j;
     for (j = 0; j < 10; j++) { starStr += j < s ? '⭐' : '☆'; }
-    return h('div', { className: 'center-wrap', style: { paddingTop: '20px' } },
+    React.useEffect(function () { sfx(cycleJustDone ? 'trophy' : (s >= 5 ? 'win' : 'pop')); }, []);
+
+    return h('div', { className: 'center-wrap', style: { paddingTop: '20px', position: 'relative' } },
+      s >= 5 ? h(Confetti, { many: cycleJustDone }) : null,
       h('div', { className: 'burst' }, s >= 8 ? '🏅' : (s >= 5 ? '🎉' : '💪')),
       h('h1', null, s + ' out of 10!'),
       h('div', { className: 'result-stars' }, starStr),
