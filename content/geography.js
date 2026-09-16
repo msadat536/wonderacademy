@@ -1,0 +1,36 @@
+/* Geography - curriculum scaffold. Stories and questions arrive in the next content wave. */
+window.CONTENT = window.CONTENT || {};
+window.CONTENT["geography"] = {
+  id: "geography", title: "Geography", emoji: "\ud83d\uddfa\ufe0f", color: "#2D7DD2", tint: "#DCEBFB",
+  concepts: [
+    { id: "continents", title: "The Seven Continents", emoji: "\ud83c\udf0d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "oceans-map", title: "The Five Oceans", emoji: "\ud83c\udf0a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "north-america", title: "North America", emoji: "\ud83d\uddfd", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "south-america", title: "South America", emoji: "\ud83e\udd99", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "europe", title: "Europe", emoji: "\ud83c\udff0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "africa", title: "Africa", emoji: "\ud83e\udd81", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "asia", title: "Asia", emoji: "\ud83d\udc3c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "australia", title: "Australia and Oceania", emoji: "\ud83e\udd98", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "antarctica", title: "Antarctica", emoji: "\ud83d\udc27", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "maps", title: "Reading Maps", emoji: "\ud83d\uddfa\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "compass", title: "The Compass Directions", emoji: "\ud83e\udded", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "globe", title: "The Globe and Equator", emoji: "\ud83c\udf10", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "countries", title: "Countries and Flags", emoji: "\ud83d\udea9", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "capitals", title: "Capital Cities", emoji: "\ud83c\udfdb\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "usa-states", title: "The United States", emoji: "\ud83c\uddfa\ud83c\uddf8", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "landforms", title: "Landforms", emoji: "\u26f0\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "islands", title: "Islands", emoji: "\ud83c\udfdd\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "famous-rivers", title: "Famous Rivers", emoji: "\ud83c\udfde\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "famous-mountains", title: "Famous Mountains", emoji: "\ud83c\udfd4\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "poles", title: "The North and South Poles", emoji: "\ud83e\uddca", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "climates", title: "World Climates", emoji: "\ud83c\udf26\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "cities-villages", title: "Cities, Towns and Villages", emoji: "\ud83c\udfd9\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "landmarks", title: "Famous Landmarks", emoji: "\ud83d\uddfc", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "wonders", title: "Wonders of the World", emoji: "\ud83c\udfef", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "languages", title: "Languages of the World", emoji: "\ud83d\udcac", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "food-world", title: "Foods Around the World", emoji: "\ud83c\udf5c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "homes-world", title: "Homes Around the World", emoji: "\ud83c\udfe0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "transport", title: "Getting Around the World", emoji: "\u2708\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "time-zones", title: "Day Here, Night There", emoji: "\ud83d\udd50", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "care-world", title: "One World to Share", emoji: "\ud83e\udd1d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
+]};

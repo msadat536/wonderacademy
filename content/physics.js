@@ -1,0 +1,36 @@
+/* Physics - curriculum scaffold. Stories and questions arrive in the next content wave. */
+window.CONTENT = window.CONTENT || {};
+window.CONTENT["physics"] = {
+  id: "physics", title: "Physics", emoji: "\u26a1", color: "#F2A104", tint: "#FDEFD0",
+  concepts: [
+    { id: "gravity", title: "Gravity", emoji: "\ud83c\udf4e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "push-pull", title: "Pushes and Pulls", emoji: "\ud83d\uded2", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "friction", title: "Friction", emoji: "\ud83d\udef7", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "magnets", title: "Magnets", emoji: "\ud83e\uddf2", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "light", title: "Light", emoji: "\ud83d\udca1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "shadows", title: "Shadows", emoji: "\ud83d\udc64", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "reflection", title: "Mirrors and Reflection", emoji: "\ud83e\ude9e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "sound", title: "Sound", emoji: "\ud83d\udd14", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "echo", title: "Echoes", emoji: "\ud83d\udde3\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "electricity", title: "Electricity", emoji: "\u26a1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "circuits", title: "Simple Circuits", emoji: "\ud83d\udd0b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "static", title: "Static Electricity", emoji: "\ud83c\udf88", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "energy", title: "Energy Everywhere", emoji: "\ud83d\udd25", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "motion", title: "Things in Motion", emoji: "\ud83d\ude97", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "speed", title: "Fast and Slow", emoji: "\ud83c\udfce\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "simple-machines", title: "Simple Machines", emoji: "\u2699\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "levers", title: "Levers", emoji: "\ud83c\udfaa", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "wheels", title: "Wheels and Axles", emoji: "\ud83c\udfa1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "ramps", title: "Ramps", emoji: "\ud83d\udcd0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "pulleys", title: "Pulleys", emoji: "\ud83c\udfd7\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "springs", title: "Springs and Bounces", emoji: "\ud83e\udd38", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "balance", title: "Balance", emoji: "\u2696\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "flight", title: "How Things Fly", emoji: "\u2708\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "rockets", title: "Rockets", emoji: "\ud83d\ude80", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "heat-energy", title: "Heat Energy", emoji: "\ud83c\udf21\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "waves-physics", title: "Waves", emoji: "\u3030\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "color-light", title: "Colors of Light", emoji: "\ud83c\udf08", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "lenses", title: "Lenses that Make Big and Small", emoji: "\ud83d\udd0d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "vibrations", title: "Vibrations and Music", emoji: "\ud83c\udfb8", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "forces-water", title: "Forces in Water", emoji: "\ud83c\udf0a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
+]};

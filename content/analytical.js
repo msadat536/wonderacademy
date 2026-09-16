@@ -1,0 +1,36 @@
+/* Analytical Skills - curriculum scaffold. Stories and questions arrive in the next content wave. */
+window.CONTENT = window.CONTENT || {};
+window.CONTENT["analytical"] = {
+  id: "analytical", title: "Analytical Skills", emoji: "\ud83e\udde9", color: "#E86A33", tint: "#FBE4D8",
+  concepts: [
+    { id: "sorting", title: "Sorting and Grouping", emoji: "\ud83d\uddc2\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "patterns", title: "Finding Patterns", emoji: "\ud83d\udd01", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "sequences", title: "What Comes Next", emoji: "\u27a1\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "matching", title: "Matching Pairs", emoji: "\ud83e\udde6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "odd-one-out", title: "Odd One Out", emoji: "\ud83d\udd0d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "size-order", title: "Ordering by Size", emoji: "\ud83d\udccf", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "counting-smart", title: "Smart Counting", emoji: "\ud83d\udd22", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "shapes", title: "Shape Detective", emoji: "\ud83d\udd37", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "puzzle-pieces", title: "Puzzle Thinking", emoji: "\ud83e\udde9", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "same-different", title: "Same and Different", emoji: "\u2696\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "cause-effect", title: "Cause and Effect", emoji: "\ud83d\udca5", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "first-next-last", title: "First, Next, Last", emoji: "\ud83e\udd47", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "categories", title: "Which Group Does It Belong To", emoji: "\ud83d\udce6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "comparing", title: "Comparing Things", emoji: "\ud83d\udd2c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "halves-wholes", title: "Parts and Wholes", emoji: "\ud83c\udf55", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "maps-paths", title: "Finding the Path", emoji: "\ud83d\udee4\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "clues", title: "Following Clues", emoji: "\ud83d\udd75\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "estimating", title: "Smart Guessing", emoji: "\ud83c\udfaf", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "charts", title: "Reading Simple Charts", emoji: "\ud83d\udcca", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "venn", title: "Sorting Circles", emoji: "\u2b55", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "opposites", title: "Opposites", emoji: "\u2194\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "analogies", title: "This Is to That", emoji: "\ud83d\udd17", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "riddle-basics", title: "Riddle Fun", emoji: "\u2753", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "memory-tricks", title: "Memory Tricks", emoji: "\ud83e\udde0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "planning", title: "Planning Steps", emoji: "\ud83d\udccb", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "problem-steps", title: "Breaking Big Problems into Small Ones", emoji: "\ud83e\ude9c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "true-false", title: "True or False", emoji: "\u2705", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "what-if", title: "What Would Happen If", emoji: "\ud83d\udcad", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "spot-mistake", title: "Spot the Mistake", emoji: "\ud83d\udc40", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "decisions", title: "Making Good Choices", emoji: "\ud83e\udd14", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
+]};

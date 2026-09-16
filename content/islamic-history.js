@@ -1,0 +1,36 @@
+/* Islamic History - curriculum scaffold. Stories and questions arrive in the next content wave. */
+window.CONTENT = window.CONTENT || {};
+window.CONTENT["islamic-history"] = {
+  id: "islamic-history", title: "Islamic History", emoji: "\ud83d\udd4c", color: "#3E8E7E", tint: "#DDF0EC",
+  concepts: [
+    { id: "creation", title: "Allah Made Everything", emoji: "\ud83c\udf1f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-adam", title: "Prophet Adam", emoji: "\ud83c\udf0d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-nuh", title: "Prophet Nuh and the Ark", emoji: "\ud83d\udea2", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-ibrahim", title: "Prophet Ibrahim", emoji: "\ud83d\udd4b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "zamzam", title: "Ismail and the Zamzam Water", emoji: "\ud83d\udca7", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "building-kaaba", title: "Building the Kaaba", emoji: "\ud83d\udd4b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-yusuf", title: "Prophet Yusuf", emoji: "\ud83d\udc55", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-musa", title: "Prophet Musa", emoji: "\ud83c\udf0a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-dawud", title: "Prophet Dawud", emoji: "\ud83d\udc26", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-sulaiman", title: "Prophet Sulaiman and the Ants", emoji: "\ud83d\udc1c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-yunus", title: "Prophet Yunus and the Whale", emoji: "\ud83d\udc0b", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "prophet-isa", title: "Prophet Isa", emoji: "\ud83d\udc76", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "year-elephant", title: "The Year of the Elephant", emoji: "\ud83d\udc18", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "birth-prophet", title: "Birth of Prophet Muhammad \ufdfa", emoji: "\ud83c\udf19", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "young-muhammad", title: "The Honest Young Muhammad \ufdfa", emoji: "\ud83e\udd1d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "khadijah", title: "Khadijah, the First Believer", emoji: "\ud83c\udf38", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "first-revelation", title: "The First Revelation", emoji: "\ud83d\udcd6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "quran", title: "The Quran, Our Holy Book", emoji: "\ud83d\udcd6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "early-muslims", title: "The First Muslims", emoji: "\ud83e\udd32", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "bilal", title: "Bilal, the First Muezzin", emoji: "\ud83c\udfb5", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "hijrah", title: "The Hijrah to Madinah", emoji: "\ud83d\udc2a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "madinah", title: "Life in Madinah", emoji: "\ud83d\udd4c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "masjid-nabawi", title: "The Prophet's Masjid", emoji: "\ud83d\udd4c", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "kindness-prophet", title: "The Prophet's \ufdfa Kindness", emoji: "\ud83d\udc9a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "abu-bakr", title: "Abu Bakr, the Loyal Friend", emoji: "\ud83e\udd1d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "umar", title: "Umar, the Fair Leader", emoji: "\u2696\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "uthman", title: "Uthman, the Generous", emoji: "\ud83d\udc9d", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "ali", title: "Ali, the Brave", emoji: "\ud83e\udd81", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "five-pillars", title: "The Five Pillars of Islam", emoji: "\ud83d\udd90\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "ramadan-eid", title: "Ramadan and Eid", emoji: "\ud83c\udf19", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
+]};

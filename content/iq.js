@@ -1,0 +1,36 @@
+/* IQ and Brain Games - curriculum scaffold. Stories and questions arrive in the next content wave. */
+window.CONTENT = window.CONTENT || {};
+window.CONTENT["iq"] = {
+  id: "iq", title: "IQ and Brain Games", emoji: "\ud83e\udde0", color: "#D64570", tint: "#F9DEE7",
+  concepts: [
+    { id: "memory-1", title: "Memory Power", emoji: "\ud83e\udde0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "visual-1", title: "Picture Puzzles", emoji: "\ud83d\uddbc\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "number-patterns", title: "Number Patterns", emoji: "\ud83d\udd22", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "letter-patterns", title: "Letter Patterns", emoji: "\ud83d\udd24", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "mirror", title: "Mirror Images", emoji: "\ud83e\ude9e", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "rotation", title: "Turning Shapes", emoji: "\ud83d\udd04", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "hidden-shapes", title: "Hidden Shapes", emoji: "\ud83d\udc41\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "count-shapes", title: "Counting Shapes", emoji: "\ud83d\udd3a", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "mazes", title: "Maze Minds", emoji: "\ud83c\udf00", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "codes", title: "Secret Codes", emoji: "\ud83d\udd10", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "sequences-hard", title: "Tricky Sequences", emoji: "\u27bf", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "word-play", title: "Word Play", emoji: "\ud83c\udfaa", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "rhymes", title: "Rhyme Time", emoji: "\ud83c\udfb5", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "riddles", title: "Riddles", emoji: "\u2753", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "speed-think", title: "Quick Thinking", emoji: "\u26a1", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "odd-patterns", title: "Pattern Breakers", emoji: "\ud83d\udea7", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "matching-logic", title: "Match the Logic", emoji: "\ud83c\udccf", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "missing-piece", title: "The Missing Piece", emoji: "\ud83e\udde9", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "number-fun", title: "Number Fun", emoji: "\ud83c\udfb2", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "size-logic", title: "Size Logic", emoji: "\ud83d\udcd0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "color-logic", title: "Color Logic", emoji: "\ud83c\udfa8", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "time-puzzles", title: "Time Puzzles", emoji: "\u23f0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "money-puzzles", title: "Coin Puzzles", emoji: "\ud83e\ude99", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "story-problems", title: "Story Problems", emoji: "\ud83d\udcda", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "trick-questions", title: "Trick Questions", emoji: "\ud83c\udfa9", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "connections", title: "Making Connections", emoji: "\ud83d\udd17", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "sorting-speed", title: "Sorting Challenge", emoji: "\ud83d\uddc3\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "backwards", title: "Thinking Backwards", emoji: "\u25c0\ufe0f", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "combos", title: "Combinations", emoji: "\ud83c\udfb0", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } },
+    { id: "master-mix", title: "Master Mix Challenge", emoji: "\ud83c\udfc6", video: '', young: { story: '', questions: [] }, older: { story: '', questions: [] } }
+]};
