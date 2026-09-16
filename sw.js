@@ -1,7 +1,7 @@
 /* Wonder Academy service worker.
    Network first, so a new version always wins. The cache is only a fallback
    for when the device is offline. Bump CACHE_VERSION on every release. */
-var CACHE_VERSION = 'wonder-v7';
+var CACHE_VERSION = 'wonder-v8';
 
 var PRECACHE = [
   './', './index.html', './styles.css', './config.js', './auth.js', './app.js',

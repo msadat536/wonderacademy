@@ -969,59 +969,160 @@
     );
   }
 
+  /* Known voice names by gender, so the list can be filtered.
+     Anything unknown is shown under Other and can still be previewed. */
+  var FEMALE_NAMES = ['samantha','karen','moira','tessa','fiona','victoria','allison','ava','susan','zoe','nicky','joanna','salli','kimberly','kendra','ivy','aria','jenny','michelle','ana','sara','serena','catherine','female','woman','google us english','google uk english female','zira','hazel','eva','linda','heather','amy','emma','olivia','samira'];
+  var MALE_NAMES = ['daniel','alex','fred','tom','aaron','rishi','oliver','arthur','gordon','matthew','joey','justin','kevin','brian','guy','davis','jason','tony','male','man','google uk english male','david','mark','james','george','ryan','eric','roger','steffan','nathan'];
+
+  function voiceGender(v) {
+    var n = (v.name || '').toLowerCase(), i;
+    for (i = 0; i < FEMALE_NAMES.length; i++) { if (n.indexOf(FEMALE_NAMES[i]) !== -1) { return 'female'; } }
+    for (i = 0; i < MALE_NAMES.length; i++) { if (n.indexOf(MALE_NAMES[i]) !== -1) { return 'male'; } }
+    if (/#female|_f\b|\bf\b/.test(n)) { return 'female'; }
+    if (/#male|_m\b|\bm\b/.test(n)) { return 'male'; }
+    return 'other';
+  }
+
+  function voiceQuality(v) {
+    var n = (v.name || '').toLowerCase();
+    if (n.indexOf('natural') !== -1 || n.indexOf('neural') !== -1 || n.indexOf('premium') !== -1 || n.indexOf('enhanced') !== -1) { return 'Natural'; }
+    if (!v.localService) { return 'Online'; }
+    return '';
+  }
+
+  var VOICE_PRESETS = [
+    { id: 'story', label: '📖 Storyteller', rate: 0.88, pitch: 1.0 },
+    { id: 'teacher', label: '🎓 Clear teacher', rate: 1.0, pitch: 0.95 },
+    { id: 'playful', label: '🎈 Playful', rate: 1.0, pitch: 1.35 },
+    { id: 'calm', label: '🌙 Calm and slow', rate: 0.78, pitch: 1.05 }
+  ];
+
+  var SAMPLE = 'Once upon a time, in the city of Makkah, a boy looked up at the stars and wondered who had made them.';
+
   function VoiceTab() {
     var prefSt = React.useState(getVoicePref()); var pref = prefSt[0], setPref = prefSt[1];
     var uiSt = React.useState(getUiPref()); var ui = uiSt[0], setUi = uiSt[1];
     var voicesSt = React.useState(listVoices()); var voices = voicesSt[0], setVoices = voicesSt[1];
+    var filterSt = React.useState('us'); var filter = filterSt[0], setFilter = filterSt[1];
+    var playingSt = React.useState(''); var playing = playingSt[0], setPlaying = playingSt[1];
 
     React.useEffect(function () {
       if (!window.speechSynthesis) { return; }
       function refresh() { setVoices(listVoices()); }
       window.speechSynthesis.addEventListener('voiceschanged', refresh);
       refresh();
-      return function () { window.speechSynthesis.removeEventListener('voiceschanged', refresh); };
+      var t = setTimeout(refresh, 600);
+      return function () { window.speechSynthesis.removeEventListener('voiceschanged', refresh); clearTimeout(t); };
     }, []);
 
     function setP(k, v) {
       var n = {}, key; for (key in pref) { n[key] = pref[key]; } n[k] = v;
       setPref(n); setVoicePref(n);
     }
+
     function setU(k, v) {
       var n = {}, key; for (key in ui) { n[key] = ui[key]; } n[k] = v;
       setUi(n); setUiPref(n);
     }
 
-    var en = voices.filter(function (v) { return v.lang && v.lang.indexOf('en') === 0; });
-    var others = voices.filter(function (v) { return !(v.lang && v.lang.indexOf('en') === 0); });
-    function label(v) { return v.name + ' (' + v.lang + (v.localService ? '' : ', online') + ')'; }
+    function preview(v) {
+      stopSpeak();
+      setPlaying(v ? v.name : 'auto');
+      var saved = pref.name;
+      setVoicePref({ name: v ? v.name : '', rate: pref.rate, pitch: pref.pitch, autoRead: pref.autoRead });
+      speak(SAMPLE, function () { setPlaying(''); });
+      setVoicePref({ name: saved, rate: pref.rate, pitch: pref.pitch, autoRead: pref.autoRead });
+    }
+
+    function applyPreset(p) {
+      var n = {}, key; for (key in pref) { n[key] = pref[key]; } n.rate = p.rate; n.pitch = p.pitch;
+      setPref(n); setVoicePref(n);
+      stopSpeak(); speak(SAMPLE);
+    }
+
+    var us = voices.filter(function (v) { return (v.lang || '').replace('_', '-').toLowerCase().indexOf('en-us') === 0; });
+    var otherEn = voices.filter(function (v) { var l = (v.lang || '').toLowerCase(); return l.indexOf('en') === 0 && l.replace('_', '-').indexOf('en-us') !== 0; });
+    var shown;
+    if (filter === 'us') { shown = us; }
+    else if (filter === 'en') { shown = us.concat(otherEn); }
+    else if (filter === 'female') { shown = us.concat(otherEn).filter(function (v) { return voiceGender(v) === 'female'; }); }
+    else if (filter === 'male') { shown = us.concat(otherEn).filter(function (v) { return voiceGender(v) === 'male'; }); }
+    else { shown = voices; }
+
+    shown = shown.slice().sort(function (a, b) {
+      var qa = voiceQuality(a) === 'Natural' ? 0 : 1, qb = voiceQuality(b) === 'Natural' ? 0 : 1;
+      if (qa !== qb) { return qa - qb; }
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    var filters = [['us', '🇺🇸 US English'], ['en', 'All English'], ['female', '👩 Female'], ['male', '👨 Male'], ['all', 'Every voice']];
 
     return h('div', null,
       h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Narrator'),
+
       h('div', { className: 'story-card' },
-        h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '6px' } }, 'Voices come from this device, so the list differs between the iPad and the phones. Set it once on each.'),
-        voices.length === 0
-          ? h('div', { className: 'sub' }, 'No voices found yet. Tap Test, then come back.')
-          : h('select', { className: 'select', value: pref.name, onChange: function (e) { setP('name', e.target.value); } },
-              [h('option', { key: 'auto', value: '' }, 'Automatic (best English voice)')]
-              .concat(en.map(function (v) { return h('option', { key: v.name, value: v.name }, label(v)); }))
-              .concat(others.length ? [h('option', { key: 'sep', disabled: true }, '── Other languages ──')] : [])
-              .concat(others.map(function (v) { return h('option', { key: v.name, value: v.name }, label(v)); }))
-            ),
-        h('div', { className: 'rate-row' }, h('span', null, 'Speed ' + Number(pref.rate).toFixed(2)),
-          h('input', { type: 'range', min: '0.6', max: '1.4', step: '0.05', value: pref.rate, onChange: function (e) { setP('rate', parseFloat(e.target.value)); } })),
+        h('h2', null, 'Voice style'),
+        h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '8px' } }, 'Quick presets. Each one plays a sample when you tap it.'),
+        h('div', { className: 'tabs small' }, VOICE_PRESETS.map(function (p) {
+          var on = Math.abs(pref.rate - p.rate) < 0.02 && Math.abs(pref.pitch - p.pitch) < 0.02;
+          return h('button', { key: p.id, className: on ? 'on' : '', onClick: function () { applyPreset(p); } }, p.label);
+        })),
+        h('div', { className: 'rate-row', style: { marginTop: '10px' } }, h('span', null, 'Speed ' + Number(pref.rate).toFixed(2)),
+          h('input', { type: 'range', min: '0.6', max: '1.4', step: '0.02', value: pref.rate, onChange: function (e) { setP('rate', parseFloat(e.target.value)); } })),
         h('div', { className: 'rate-row' }, h('span', null, 'Pitch ' + Number(pref.pitch).toFixed(2)),
-          h('input', { type: 'range', min: '0.6', max: '1.6', step: '0.05', value: pref.pitch, onChange: function (e) { setP('pitch', parseFloat(e.target.value)); } })),
-        h('div', { className: 'rate-row' }, h('span', null, 'Read aloud automatically'),
-          h('select', { className: 'select', style: { width: 'auto' }, value: pref.autoRead, onChange: function (e) { setP('autoRead', e.target.value); } },
-            h('option', { value: 'young' }, 'Age 6 and under'),
-            h('option', { value: 'all' }, 'Every profile'),
-            h('option', { value: 'off' }, 'Only when tapped'))),
+          h('input', { type: 'range', min: '0.6', max: '1.6', step: '0.02', value: pref.pitch, onChange: function (e) { setP('pitch', parseFloat(e.target.value)); } })),
         h('div', { className: 'actionrow' },
-          h('button', { className: 'btn grape small', onClick: function () {
-            speak('Bismillah. Hello ' + 'from Wonder Academy. Prophet Muhammad ﷺ was born in Makkah. Ibrahim (AS) built the Kaaba with Ismail (AS). Khadijah (RA) was the first Muslim.');
-          } }, '🔊 Test voice'),
+          h('button', { className: 'btn grape small', onClick: function () { stopSpeak(); speak(SAMPLE); } }, '🔊 Hear it'),
           h('button', { className: 'btn plain small', onClick: stopSpeak }, 'Stop'))
       ),
+
+      h('div', { className: 'story-card', style: { marginTop: '16px' } },
+        h('h2', null, 'Choose a voice'),
+        h('div', { className: 'sub', style: { textAlign: 'left' } },
+          voices.length + ' voice' + (voices.length === 1 ? '' : 's') + ' on this device, ' + us.length + ' US English. Tap ▶ to hear one before choosing.'),
+        h('div', { className: 'tabs small', style: { marginTop: '8px' } }, filters.map(function (f) {
+          return h('button', { key: f[0], className: filter === f[0] ? 'on' : '', onClick: function () { setFilter(f[0]); } }, f[1]);
+        })),
+
+        h('div', { className: 'voice-row' + (pref.name === '' ? ' sel' : '') },
+          h('button', { className: 'vplay', onClick: function () { preview(null); } }, playing === 'auto' ? '⏸' : '▶'),
+          h('span', { className: 'fill' }, h('span', { className: 'vname' }, 'Automatic'),
+            h('span', { className: 'vmeta' }, 'Best English voice on this device')),
+          h('button', { className: 'btn small ' + (pref.name === '' ? 'green' : 'plain'), onClick: function () { setP('name', ''); } },
+            pref.name === '' ? '✓ Using' : 'Use')),
+
+        shown.length === 0
+          ? h('div', { className: 'sub', style: { marginTop: '10px' } },
+              filter === 'us' ? 'No US English voices installed. See how to add them below.' : 'No voices match this filter.')
+          : shown.map(function (v) {
+              var g = voiceGender(v), q = voiceQuality(v);
+              var sel = pref.name === v.name;
+              return h('div', { key: v.name, className: 'voice-row' + (sel ? ' sel' : '') },
+                h('button', { className: 'vplay', onClick: function () { preview(v); } }, playing === v.name ? '⏸' : '▶'),
+                h('span', { className: 'fill' },
+                  h('span', { className: 'vname' }, (g === 'female' ? '👩 ' : (g === 'male' ? '👨 ' : '🗣️ ')) + v.name),
+                  h('span', { className: 'vmeta' }, v.lang + (q ? ' · ' + q : '') + (v.localService ? '' : ' · needs internet'))),
+                h('button', { className: 'btn small ' + (sel ? 'green' : 'plain'), onClick: function () { setP('name', v.name); } },
+                  sel ? '✓ Using' : 'Use'));
+            })
+      ),
+
+      h('div', { className: 'story-card', style: { marginTop: '16px' } },
+        h('h2', null, 'Want better voices?'),
+        h('p', { style: { fontSize: '17px' } },
+          'Voices come from the phone or tablet, not from this app, so adding them there adds them here.\n\n' +
+          'Android: Settings, then Accessibility, then Text-to-speech output. Set the engine to Speech Recognition and Synthesis from Google, tap the gear beside it, then Install voice data, then English (United States). Download the voices marked with the highest quality. Reopen this app afterwards.\n\n' +
+          'iPad: Settings, then Accessibility, then Spoken Content, then Voices, then English. Download the Enhanced or Premium versions of voices such as Samantha, Ava, Tom or Aaron. They are a large download but sound far better.')
+      ),
+
+      h('div', { className: 'story-card', style: { marginTop: '16px' } },
+        h('h2', null, 'When to read aloud'),
+        h('div', { className: 'tabs small' },
+          h('button', { className: pref.autoRead === 'young' ? 'on' : '', onClick: function () { setP('autoRead', 'young'); } }, 'Age 6 and under'),
+          h('button', { className: pref.autoRead === 'all' ? 'on' : '', onClick: function () { setP('autoRead', 'all'); } }, 'Every profile'),
+          h('button', { className: pref.autoRead === 'off' ? 'on' : '', onClick: function () { setP('autoRead', 'off'); } }, 'Only when tapped'))
+      ),
+
       h('h1', { style: { fontSize: '24px', margin: '20px 0 6px' } }, 'Text size'),
       h('div', { className: 'story-card' },
         h('div', { className: 'tabs small' },

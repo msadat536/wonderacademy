@@ -474,3 +474,21 @@ html.force-phone .fact-text { font-size: 18px !important; }
 html.force-phone .pinpad { max-width: 300px !important; }
 html.force-phone .pinpad button { font-size: 26px !important; padding: 16px 0 !important; }
 html.force-phone .wallet-amt { font-size: 40px !important; }
+
+/* Voice picker rows */
+.voice-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; border: 3px solid #223A5E; border-radius: 16px;
+  box-shadow: 3px 3px 0 #223A5E; padding: 8px 10px; margin-top: 8px;
+}
+.voice-row.sel { background: #DFF3E2; }
+.voice-row .fill { flex: 1; min-width: 0; }
+.voice-row .vname { display: block; font-weight: 800; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-row .vmeta { display: block; font-size: 13px; font-weight: 700; opacity: .65; }
+.vplay {
+  border: 3px solid #223A5E; border-radius: 50%; background: #FFC93C;
+  width: 44px; height: 44px; min-width: 44px; font-size: 17px; font-weight: 800;
+  box-shadow: 2px 2px 0 #223A5E; color: #223A5E;
+}
+.vplay:active { transform: translate(2px,2px); box-shadow: 0 0 0 #223A5E; }
+.story-card p { white-space: pre-line; }
