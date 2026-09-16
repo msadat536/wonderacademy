@@ -40,6 +40,25 @@ A learning app for kids with a real parent login, kid profiles, age-appropriate 
 
 Kids stay signed in on that device. Sign out only from the parent area.
 
+
+## Installing on phones and tablets
+
+The app is a PWA, so it installs from the browser with no app store.
+
+**iPhone / iPad (must use Safari):** open the site, tap the Share button, scroll down, tap Add to Home Screen, tap Add. It launches fullscreen with no browser bars.
+
+**Android (Chrome):** open the site, tap the three dots, tap Install app or Add to Home screen, confirm. Some phones show an Install banner at the bottom automatically.
+
+**Windows / Mac (Chrome or Edge):** open the site and click the install icon in the address bar, or three dots > Cast, save and share > Install page as app.
+
+### Updating an installed copy
+
+The service worker uses a network-first strategy, so a fresh version is picked up as soon as the device is online. After pushing changes, bump `CACHE_VERSION` in `sw.js` and the `?v=` numbers in `index.html` to force it immediately. Closing and reopening the app twice guarantees the update has applied.
+
+### Offline
+
+Once a device has opened the app, lessons and quizzes keep working without internet. Progress saves locally and syncs to Supabase next time the device is online. Signing in for the first time does require a connection.
+
 ## Adding and removing profiles
 
 Parent area, reached from the profile picker: tap **Parent area**, enter your PIN. There you can add profiles, remove them, change the PIN, and sign out. Removing a profile also deletes that child's progress.
