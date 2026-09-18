@@ -462,6 +462,8 @@
       pinHash: null, settings: {}, session: null, offline: false, notice: '', dbProblems: []
     });
     React.useEffect(function () { applyUiPref(); }, []);
+
+    var state = st[0], setState = st[1];
     var remSt = React.useState(null); var reminder = remSt[0], setReminder = remSt[1];
 
     /* Check schedules every 20 seconds while the app is open. */
@@ -505,7 +507,6 @@
       }, 20000);
       return function () { clearInterval(t); };
     }, [state.data.schedule, state.data.profiles]);
-    var state = st[0], setState = st[1];
     var pidSt = React.useState(null);
     var pid = pidSt[0], setPid = pidSt[1];
     var navSt = React.useState({ catId: null, conceptId: null });
