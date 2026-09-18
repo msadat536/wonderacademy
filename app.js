@@ -7,7 +7,7 @@
   var APP_NAME = CFG.APP_NAME || 'Wonder Academy';
   var CONTENT = window.CONTENT || {};
   var AUTH = window.WA_AUTH;
-  var CAT_ORDER = ['science', 'islamic-history', 'story-time', 'math', 'physics', 'biology', 'geography', 'inventors', 'character', 'analytical', 'reasoning', 'iq'];
+  var CAT_ORDER = ['science', 'islamic-history', 'story-time', 'math', 'physics', 'biology', 'geography', 'technology', 'inventors', 'character', 'analytical', 'reasoning', 'iq'];
   var VOICE_KEY = 'wonder_voice_v1';
   var UI_KEY = 'wonder_ui_v1';
   var AVATARS = ['🦁', '🐼', '🦄', '🐯', '🚀', '🌸', '🐬', '🦖', '🐱', '⚽', '🎨', '🌟'];
@@ -53,16 +53,26 @@
   /* ---------------- data ---------------- */
 
   function loadEverything(userId, cb) {
-    var out = { profiles: [], progress: [], ledger: [], attempts: [], settings: null, loaded: false };
+    var out = { profiles: [], progress: [], ledger: [], attempts: [], schedule: [], settings: null, loaded: false, dbProblems: [] };
     AUTH.api('parent_settings?select=*', 'GET', null, null, function (e1, rows) {
       if (e1 && e1.status === 401) { cb('signedout', null); return; }
-      if (!e1 && rows && rows[0]) { out.settings = rows[0]; }
+      if (!e1 && rows && rows[0]) {
+        out.settings = rows[0];
+        ['star_cents', 'video_map', 'pron_overrides', 'sfx_on'].forEach(function (col) {
+          if (!(col in rows[0])) { out.dbProblems.push('parent_settings.' + col); }
+        });
+      }
       AUTH.api('kid_profiles?select=*&order=created_at', 'GET', null, null, function (e2, profs) {
         if (e2 && e2.status === 401) { cb('signedout', null); return; }
         AUTH.api('kid_progress?select=*', 'GET', null, null, function (e3, rows2) {
           if (e3 && e3.status === 401) { cb('signedout', null); return; }
           AUTH.api('kid_ledger?select=*&order=created_at.desc', 'GET', null, null, function (e4, rows3) {
             AUTH.api('kid_attempts?select=*&order=created_at.desc&limit=2000', 'GET', null, null, function (e5, rows4) {
+             AUTH.api('kid_schedule?select=*', 'GET', null, null, function (e6, rows5) {
+              if (e4 && e4.status !== 401) { out.dbProblems.push('kid_ledger'); }
+              if (e5 && e5.status !== 401) { out.dbProblems.push('kid_attempts'); }
+              if (e6 && e6.status !== 401) { out.dbProblems.push('kid_schedule'); }
+              out.schedule = (!e6 && rows5) ? rows5 : [];
               if (e2 || e3) {
                 var cached = loadCache(userId);
                 out.profiles = cached.profiles; out.progress = cached.progress;
@@ -75,8 +85,9 @@
               out.ledger = (!e4 && rows3) ? rows3 : (loadCache(userId).ledger || []);
               out.attempts = (!e5 && rows4) ? rows4 : (loadCache(userId).attempts || []);
               out.loaded = true;
-              saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger, attempts: out.attempts });
+              saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger, attempts: out.attempts, settings: out.settings });
               cb(null, out, false);
+             });
             });
           });
         });
@@ -88,7 +99,15 @@
     var body = { owner_id: userId }, k;
     for (k in patch) { body[k] = patch[k]; }
     AUTH.api('parent_settings?on_conflict=owner_id', 'POST', body,
-      { 'Prefer': 'resolution=merge-duplicates,return=representation' }, cb);
+      { 'Prefer': 'resolution=merge-duplicates,return=representation' }, function (err, out) {
+        if (err) {
+          var msg = (err.message || '').toLowerCase();
+          if (msg.indexOf('column') !== -1 || err.status === 400) {
+            err.message = 'Database is missing a column. Run supabase-all-updates.sql in the Supabase SQL editor, then try again.';
+          }
+        }
+        cb(err, out);
+      });
   }
 
   function addLedger(userId, row, cb) {
@@ -187,8 +206,12 @@
   function hasContentFor(data, pid, cat) {
     var prof = null, i;
     for (i = 0; i < data.profiles.length; i++) { if (data.profiles[i].id === pid) { prof = data.profiles[i]; } }
-    var tier = tierOf(prof ? prof.age : 8);
+    var age = prof ? prof.age : 8;
+    var tier = tierOf(age);
+    var catMin = cat && cat.minAge ? cat.minAge : 0;
     return function (con) {
+      if (age < catMin) { return false; }
+      if (con.minAge && age < con.minAge) { return false; }
       var b = con[tier];
       if (!b || !b.questions || b.questions.length === 0) { return false; }
       return !!(b.story || (b.pages && b.pages.length > 0));
@@ -251,13 +274,26 @@
     osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.03);
   }
 
+  function sfxEnabled() {
+    var p = getVoicePref();
+    return p.sfx === true;
+  }
+
   function sfx(kind) {
-    if (kind === 'good') { tone(660, 0, 0.13); tone(880, 0.1, 0.18); }
-    else if (kind === 'bad') { tone(280, 0, 0.16, 'triangle'); tone(200, 0.12, 0.2, 'triangle'); }
-    else if (kind === 'pop') { tone(520, 0, 0.08, 'square', 0.08); }
-    else if (kind === 'page') { tone(440, 0, 0.07, 'sine', 0.07); }
-    else if (kind === 'win') { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.12, 0.22); }); }
-    else if (kind === 'trophy') { [523, 659, 784, 1047, 1319].forEach(function (f, i) { tone(f, i * 0.1, 0.3); }); }
+    if (!sfxEnabled()) { return; }
+    if (window.speechSynthesis && window.speechSynthesis.speaking) { return; }
+    if (kind === 'good') { tone(523, 0, 0.10, 'sine', 0.07); tone(784, 0.09, 0.16, 'sine', 0.06); }
+    else if (kind === 'bad') { tone(330, 0, 0.18, 'sine', 0.05); }
+    else if (kind === 'pop') { tone(660, 0, 0.06, 'sine', 0.04); }
+    else if (kind === 'page') { tone(587, 0, 0.05, 'sine', 0.03); }
+    else if (kind === 'win') { [523, 659, 784].forEach(function (f, i) { tone(f, i * 0.14, 0.22, 'sine', 0.06); }); }
+    else if (kind === 'trophy') { [523, 659, 784, 1047].forEach(function (f, i) { tone(f, i * 0.13, 0.28, 'sine', 0.06); }); }
+  }
+
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) { el.requestFullscreen().catch(function () {}); }
+    else if (document.exitFullscreen) { document.exitFullscreen().catch(function () {}); }
   }
 
   function reduceMotion() {
@@ -305,7 +341,7 @@
   /* ---------------- speech ---------------- */
 
   function getVoicePref() {
-    var d = { name: '', rate: 0.95, pitch: 1.05, autoRead: 'young' };
+    var d = { name: '', rate: 0.9, pitch: 1.0, autoRead: 'young', sfx: false };
     try { var r = localStorage.getItem(VOICE_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
     return d;
   }
@@ -371,6 +407,7 @@
     var clean = pronounce(text);
     var parts = clean.match(/[^.!?]+[.!?]+["')]?\s*|[^.!?]+$/g) || [clean];
     var idx = 0;
+    if (window.speechSynthesis.paused) { window.speechSynthesis.resume(); }
     function next() {
       if (token !== speakToken) { return; }
       if (idx >= parts.length) { if (onEnd) { onEnd(); } return; }
@@ -379,8 +416,9 @@
       var u = new SpeechSynthesisUtterance(piece);
       u.rate = pref.rate || 0.95; u.pitch = pref.pitch || 1.05;
       if (voice) { u.voice = voice; u.lang = voice.lang; }
-      u.onend = function () { setTimeout(next, 120); };
-      u.onerror = function () { setTimeout(next, 50); };
+      u.volume = 1;
+      u.onend = function () { setTimeout(next, 260); };
+      u.onerror = function () { setTimeout(next, 80); };
       window.speechSynthesis.speak(u);
     }
     next();
@@ -420,10 +458,53 @@
 
   function App() {
     var st = React.useState({
-      screen: 'loading', data: { profiles: [], progress: [], ledger: [], attempts: [] },
-      pinHash: null, settings: {}, session: null, offline: false, notice: ''
+      screen: 'loading', data: { profiles: [], progress: [], ledger: [], attempts: [], schedule: [] },
+      pinHash: null, settings: {}, session: null, offline: false, notice: '', dbProblems: []
     });
     React.useEffect(function () { applyUiPref(); }, []);
+    var remSt = React.useState(null); var reminder = remSt[0], setReminder = remSt[1];
+
+    /* Check schedules every 20 seconds while the app is open. */
+    React.useEffect(function () {
+      var t = setInterval(function () {
+        var list = state.data.schedule || [];
+        if (!list.length || !state.data.profiles.length) { return; }
+        var now = new Date();
+        var todayKey = now.toISOString().slice(0, 10);
+        var fired = {};
+        try { fired = JSON.parse(localStorage.getItem('wonder_fired_' + todayKey) || '{}'); } catch (e) {}
+        list.forEach(function (sc) {
+          if (!sc.enabled) { return; }
+          var days = String(sc.days || '').split(',').map(function (d) { return parseInt(d, 10); });
+          if (days.indexOf(now.getDay()) === -1) { return; }
+          var hm = String(sc.time_of_day || '17:00').split(':');
+          var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hm[0], 10), parseInt(hm[1], 10), 0);
+          var prof = null, i;
+          for (i = 0; i < state.data.profiles.length; i++) { if (state.data.profiles[i].id === sc.profile_id) { prof = state.data.profiles[i]; } }
+          if (!prof) { return; }
+          var catTitle = sc.category !== 'any' && CONTENT[sc.category] ? CONTENT[sc.category].title : 'learning';
+          var diffMin = (target.getTime() - now.getTime()) / 60000;
+          var pre = sc.remind_minutes || 15;
+          function fire(key, text, minutes) {
+            if (fired[key]) { return; }
+            fired[key] = 1;
+            try { localStorage.setItem('wonder_fired_' + todayKey, JSON.stringify(fired)); } catch (e) {}
+            setReminder({ text: text, profile: prof, category: sc.category, minutes: minutes });
+            stopSpeak();
+            speak(text);
+            if (window.Notification && Notification.permission === 'granted') {
+              try { new Notification('Wonder Academy', { body: text, icon: 'icon-192.png' }); } catch (e2) {}
+            }
+          }
+          if (diffMin <= pre && diffMin > pre - 0.4) {
+            fire(sc.id + ':pre', 'Hello ' + prof.name + '! Your ' + catTitle + ' lesson starts in ' + pre + ' minutes. Get ready!', pre);
+          } else if (diffMin <= 0 && diffMin > -0.4) {
+            fire(sc.id + ':now', prof.name + ', it is lesson time! Let us learn some ' + catTitle + '.', 0);
+          }
+        });
+      }, 20000);
+      return function () { clearInterval(t); };
+    }, [state.data.schedule, state.data.profiles]);
     var state = st[0], setState = st[1];
     var pidSt = React.useState(null);
     var pid = pidSt[0], setPid = pidSt[1];
@@ -458,7 +539,7 @@
           update({ screen: 'login', session: null, notice: 'Please sign in again.' });
           return;
         }
-        var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [], attempts: out.attempts || [] };
+        var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [], attempts: out.attempts || [], schedule: out.schedule || [] };
         var st0 = out.settings || {};
         try { setVideoMap(st0.video_map ? JSON.parse(st0.video_map) : {}); } catch (e) { setVideoMap({}); }
         if (st0.pron_overrides || st0.honorific_mode) {
@@ -471,7 +552,7 @@
         var next = pinHash ? (data.profiles.length ? 'profiles' : 'parent') : 'pinSetup';
         setState({
           screen: next, data: data, pinHash: pinHash, settings: out.settings || {},
-          session: session, offline: !!offline, notice: ''
+          session: session, offline: !!offline, notice: '', dbProblems: out.dbProblems || []
         });
       });
     }
@@ -493,8 +574,8 @@
       AUTH.signOut();
       setPid(null);
       setState({
-        screen: 'login', data: { profiles: [], progress: [], ledger: [], attempts: [] },
-        pinHash: null, settings: {}, session: null, offline: false, notice: ''
+        screen: 'login', data: { profiles: [], progress: [], ledger: [], attempts: [], schedule: [] },
+        pinHash: null, settings: {}, session: null, offline: false, notice: '', dbProblems: []
       });
     }
 
@@ -516,10 +597,34 @@
       });
     }
 
+    function onSchedule(row, done) {
+      var body = { owner_id: state.session.user_id, profile_id: row.profile_id, days: row.days, time_of_day: row.time_of_day,
+        category: row.category, remind_minutes: row.remind_minutes, enabled: row.enabled !== false };
+      var path = row.id ? 'kid_schedule?id=eq.' + encodeURIComponent(row.id) : 'kid_schedule';
+      AUTH.api(path, row.id ? 'PATCH' : 'POST', body, { 'Prefer': 'return=representation' }, function (err, out) {
+        if (err || !out || !out[0]) { done('Could not save. Run supabase-all-updates.sql if this keeps happening.'); return; }
+        var saved = out[0];
+        var list = row.id ? state.data.schedule.map(function (x) { return x.id === saved.id ? saved : x; }) : state.data.schedule.concat([saved]);
+        var next = {}, k; for (k in state.data) { next[k] = state.data[k]; } next.schedule = list;
+        update({ data: next });
+        done(null);
+      });
+    }
+
+    function onDeleteSchedule(id, done) {
+      AUTH.api('kid_schedule?id=eq.' + encodeURIComponent(id), 'DELETE', null, null, function (err) {
+        if (err) { done('Could not remove.'); return; }
+        var next = {}, k; for (k in state.data) { next[k] = state.data[k]; }
+        next.schedule = state.data.schedule.filter(function (x) { return x.id !== id; });
+        update({ data: next });
+        done(null);
+      });
+    }
+
     function onLedger(row, done) {
       addLedger(state.session.user_id, row, function (err, saved) {
         if (err) { done('Could not save. Check your connection.'); return; }
-        var next = { profiles: state.data.profiles, progress: state.data.progress, attempts: state.data.attempts, ledger: [saved].concat(state.data.ledger) };
+        var next = { profiles: state.data.profiles, progress: state.data.progress, attempts: state.data.attempts, schedule: state.data.schedule, ledger: [saved].concat(state.data.ledger) };
         saveCache(state.session.user_id, next);
         update({ data: next });
         done(null);
@@ -529,7 +634,7 @@
     function onAddProfile(name, age, avatar, done) {
       createProfile(state.session.user_id, { name: name, age: age, avatar: avatar }, function (err, saved) {
         if (err) { done('Could not save. Check your connection.'); return; }
-        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress, ledger: state.data.ledger, attempts: state.data.attempts };
+        var next = { profiles: state.data.profiles.concat([saved]), progress: state.data.progress, ledger: state.data.ledger, attempts: state.data.attempts, schedule: state.data.schedule };
         saveCache(state.session.user_id, next);
         update({ data: next });
         done(null);
@@ -543,7 +648,8 @@
           profiles: state.data.profiles.filter(function (p) { return p.id !== id; }),
           progress: state.data.progress.filter(function (r) { return r.profile_id !== id; }),
           ledger: state.data.ledger.filter(function (r) { return r.profile_id !== id; }),
-          attempts: state.data.attempts.filter(function (r) { return r.profile_id !== id; })
+          attempts: state.data.attempts.filter(function (r) { return r.profile_id !== id; }),
+          schedule: state.data.schedule.filter(function (r) { return r.profile_id !== id; })
         };
         saveCache(state.session.user_id, next);
         update({ data: next, notice: '' });
@@ -573,7 +679,7 @@
         found = { profile_id: pid, category: catId, concept_id: conceptId, cycle: cycle, best_score: correct, stars: correct };
         rows.push(found);
       }
-      var next = { profiles: state.data.profiles, progress: rows, ledger: state.data.ledger, attempts: state.data.attempts };
+      var next = { profiles: state.data.profiles, progress: rows, ledger: state.data.ledger, attempts: state.data.attempts, schedule: state.data.schedule };
       saveCache(state.session.user_id, next);
       persistProgress(state.session.user_id, found);
 
@@ -596,7 +702,7 @@
         if (!err && saved) {
           setState(function (s2) {
             var list = s2.data.attempts.map(function (x) { return x.id === att.id ? saved : x; });
-            var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, ledger: s2.data.ledger, attempts: list };
+            var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, ledger: s2.data.ledger, attempts: list, schedule: s2.data.schedule };
             var n2 = {}, k; for (k in s2) { n2[k] = s2[k]; } n2.data = d2; return n2;
           });
         }
@@ -622,7 +728,7 @@
           if (!err && saved) {
             setState(function (s2) {
               var led = s2.data.ledger.map(function (x) { return x.id === localRow.id ? saved : x; });
-              var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, attempts: s2.data.attempts, ledger: led };
+              var d2 = { profiles: s2.data.profiles, progress: s2.data.progress, attempts: s2.data.attempts, schedule: s2.data.schedule, ledger: led };
               var n2 = {}, k; for (k in s2) { n2[k] = s2[k]; } n2.data = d2; return n2;
             });
           }
@@ -653,7 +759,8 @@
     if (state.screen === 'parent') {
       return h(ParentScreen, {
         data: state.data, session: state.session, notice: state.notice, offline: state.offline,
-        settings: state.settings,
+        settings: state.settings, dbProblems: state.dbProblems,
+        onSchedule: onSchedule, onDeleteSchedule: onDeleteSchedule,
         onAdd: onAddProfile, onDelete: onDeleteProfile, onSignOut: handleSignOut,
         onPinChange: function (hash) { onPinCreated(hash); },
         onSaveRates: onSaveRates, onLedger: onLedger,
@@ -661,18 +768,39 @@
       });
     }
     if (state.screen === 'profiles') {
-      return h(ProfilePick, {
-        data: state.data, offline: state.offline,
-        onPick: function (p) { setPid(p.id); go('home'); },
-        onParent: function () { go('parentPin'); }
-      });
+      return h('div', null,
+        reminder ? h(ReminderBanner, {
+          reminder: reminder,
+          onStart: function () {
+            setPid(reminder.profile.id); setReminder(null);
+            if (reminder.category !== 'any' && CONTENT[reminder.category]) { go('category', { catId: reminder.category }); } else { go('home'); }
+          },
+          onClose: function () { setReminder(null); }
+        }) : null,
+        h(ProfilePick, {
+          data: state.data, offline: state.offline,
+          onPick: function (p) { setPid(p.id); go('home'); },
+          onParent: function () { go('parentPin'); }
+        }));
     }
 
     var profile = null, i;
     for (i = 0; i < state.data.profiles.length; i++) { if (state.data.profiles[i].id === pid) { profile = state.data.profiles[i]; } }
     if (!profile) { return h('div', { className: 'center-wrap' }, h('h1', null, '...')); }
 
+    var banner = reminder ? h(ReminderBanner, {
+      reminder: reminder,
+      onStart: function () {
+        setPid(reminder.profile.id);
+        setReminder(null);
+        if (reminder.category !== 'any' && CONTENT[reminder.category]) { go('category', { catId: reminder.category }); }
+        else { go('home'); }
+      },
+      onClose: function () { setReminder(null); }
+    }) : null;
+
     var shell = [
+      banner,
       h(TopBar, {
         key: 'tb', profile: profile, stars: totalStars(state.data, pid),
         onSwitch: function () { setPid(null); go('profiles'); }
@@ -704,7 +832,13 @@
         key: 'res', data: state.data, pid: pid, profile: profile, catId: nav.catId, conceptId: nav.conceptId,
         score: window.__lastScore || 0, earned: window.__lastEarned || 0, currency: (state.settings && state.settings.currency) || '$',
         onCategory: function () { go('category'); },
+        onActivity: function () { go('activity'); },
         onNext: function (nextId) { if (nextId) { go('concept', { conceptId: nextId }); } else { go('category'); } }
+      }));
+    } else if (state.screen === 'activity') {
+      shell.push(h(ActivityScreen, {
+        key: 'act', data: state.data, pid: pid, profile: profile, catId: nav.catId, conceptId: nav.conceptId,
+        onBack: function () { go('category'); }
       }));
     } else if (state.screen === 'rewards') {
       shell.push(h(RewardsScreen, { key: 'rw', data: state.data, pid: pid, profile: profile, settings: state.settings }));
@@ -717,7 +851,8 @@
 
     var activeCat = nav.catId && CONTENT[nav.catId] ? CONTENT[nav.catId] : null;
     var shellStyle = activeCat ? { '--cat': activeCat.color, '--cat-tint': activeCat.tint } : null;
-    return h('div', { className: 'app' + (activeCat ? ' themed' : ''), style: shellStyle }, shell);
+    var focus = state.screen === 'concept' || state.screen === 'quiz' || state.screen === 'activity';
+    return h('div', { className: 'app' + (activeCat ? ' themed' : '') + (focus ? ' focus' : ''), style: shellStyle }, shell);
   }
 
   /* ---------------- auth screens ---------------- */
@@ -879,7 +1014,7 @@
       );
     }
 
-    var tabs = [['profiles', '👧 Profiles'], ['scores', '📊 Scores'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['words', '🗣️ Words'], ['videos', '🎬 Videos'], ['account', '⚙️ Account']];
+    var tabs = [['profiles', '👧 Profiles'], ['schedule', '⏰ Schedule'], ['scores', '📊 Scores'], ['money', '💰 Rewards'], ['voice', '🎙️ Narrator'], ['words', '🗣️ Words'], ['videos', '🎬 Videos'], ['account', '⚙️ Account']];
 
     return h('div', { className: 'app' },
       h('div', { className: 'backrow' },
@@ -888,10 +1023,14 @@
       ),
       props.offline ? h('div', { className: 'sub', style: { color: '#C0392B' } }, 'Working offline. Changes may not save.') : null,
       props.notice ? h('div', { className: 'sub', style: { color: '#C0392B' } }, props.notice) : null,
+      props.dbProblems && props.dbProblems.length ? h('div', { className: 'db-warn' },
+        h('div', { className: 'fact-lbl' }, '⚠️ Database update needed'),
+        h('div', null, 'Rewards, videos, scores or schedules will not save until you run supabase-all-updates.sql in Supabase > SQL Editor. It is safe to run more than once. Missing: ' + props.dbProblems.join(', '))) : null,
       h('div', { className: 'tabs' }, tabs.map(function (t) {
         return h('button', { key: t[0], className: tab === t[0] ? 'on' : '', onClick: function () { setTab(t[0]); } }, t[1]);
       })),
       tab === 'profiles' ? h(ProfilesTab, props) : null,
+      tab === 'schedule' ? h(ScheduleTab, props) : null,
       tab === 'scores' ? h(ScoresTab, props) : null,
       tab === 'money' ? h(MoneyTab, props) : null,
       tab === 'voice' ? h(VoiceTab, null) : null,
@@ -1204,6 +1343,11 @@
       h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Money rewards'),
       h('div', { className: 'story-card' },
         h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '8px' } }, 'How much each achievement earns. Only new stars count, so replaying a lesson cannot farm money.'),
+        (toCents(star) === 0 && toCents(badge) === 0 && toCents(trophy) === 0)
+          ? h('div', { className: 'db-warn', style: { marginBottom: '10px' } },
+              h('div', { className: 'fact-lbl' }, 'All rates are zero, so nothing is being earned yet.'),
+              h('button', { className: 'btn small green', style: { marginTop: '6px' }, onClick: function () { setStar('0.10'); setBadge('0.50'); setTrophy('2.00'); } }, 'Use suggested: 10¢ star, 50¢ badge, $2 trophy'))
+          : null,
         h('div', { className: 'rate-row' }, h('span', null, 'Currency symbol'), h('input', { className: 'rate-input', value: curSym, maxLength: 3, onChange: function (e) { setCurSym(e.target.value); } })),
         h('div', { className: 'rate-row' }, h('span', null, '⭐ Per new star'), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: star, onChange: function (e) { setStar(e.target.value); } })),
         h('div', { className: 'rate-row' }, h('span', null, '🏅 Per Smarty Badge (8+/10)'), h('input', { className: 'rate-input', type: 'number', step: '0.01', min: '0', value: badge, onChange: function (e) { setBadge(e.target.value); } })),
@@ -1267,10 +1411,11 @@
   }
 
   var VOICE_PRESETS = [
-    { id: 'story', label: '📖 Storyteller', rate: 0.88, pitch: 1.0 },
-    { id: 'teacher', label: '🎓 Clear teacher', rate: 1.0, pitch: 0.95 },
-    { id: 'playful', label: '🎈 Playful', rate: 1.0, pitch: 1.35 },
-    { id: 'calm', label: '🌙 Calm and slow', rate: 0.78, pitch: 1.05 }
+    { id: 'soothing', label: '🌿 Soothing', rate: 0.86, pitch: 0.98 },
+    { id: 'story', label: '📖 Storyteller', rate: 0.9, pitch: 1.0 },
+    { id: 'teacher', label: '🎓 Clear teacher', rate: 0.98, pitch: 0.95 },
+    { id: 'playful', label: '🎈 Playful', rate: 0.96, pitch: 1.2 },
+    { id: 'calm', label: '🌙 Bedtime', rate: 0.78, pitch: 1.0 }
   ];
 
   var SAMPLE = 'Once upon a time, in the city of Makkah, a boy looked up at the stars and wondered who had made them.';
@@ -1392,6 +1537,13 @@
       ),
 
       h('div', { className: 'story-card', style: { marginTop: '16px' } },
+        h('h2', null, 'Sound effects'),
+        h('div', { className: 'sub', style: { textAlign: 'left' } }, 'Soft chimes on answers and celebrations. Off by default so the narrator is never talked over.'),
+        h('div', { className: 'tabs small' },
+          h('button', { className: !pref.sfx ? 'on' : '', onClick: function () { setP('sfx', false); } }, 'Off'),
+          h('button', { className: pref.sfx ? 'on' : '', onClick: function () { setP('sfx', true); setTimeout(function () { sfx('good'); }, 50); } }, 'On'))
+      ),
+      h('div', { className: 'story-card', style: { marginTop: '16px' } },
         h('h2', null, 'When to read aloud'),
         h('div', { className: 'tabs small' },
           h('button', { className: pref.autoRead === 'young' ? 'on' : '', onClick: function () { setP('autoRead', 'young'); } }, 'Age 6 and under'),
@@ -1407,6 +1559,132 @@
           h('button', { className: ui.textSize === 'huge' ? 'on' : '', onClick: function () { setU('textSize', 'huge'); } }, 'Huge')),
         h('div', { className: 'sub', style: { marginTop: '8px' } }, 'Saved on this device only.')
       )
+    );
+  }
+
+  function ReminderBanner(props) {
+    var r = props.reminder;
+    return h('div', { className: 'reminder' },
+      h('div', { className: 'rem-em' }, r.minutes > 0 ? '⏰' : '🎒'),
+      h('div', { className: 'fill' }, h('div', { className: 'rem-text' }, r.text)),
+      h('button', { className: 'btn green small', onClick: props.onStart }, 'Start'),
+      h('button', { className: 'btn plain small', onClick: props.onClose }, '✕')
+    );
+  }
+
+  var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function ScheduleTab(props) {
+    var kidSt = React.useState(props.data.profiles.length ? props.data.profiles[0].id : null); var kid = kidSt[0], setKid = kidSt[1];
+    var daysSt = React.useState([1, 2, 3, 4, 5]); var days = daysSt[0], setDays = daysSt[1];
+    var timeSt = React.useState('17:00'); var time = timeSt[0], setTime = timeSt[1];
+    var catSt = React.useState('any'); var catId = catSt[0], setCatId = catSt[1];
+    var preSt = React.useState(15); var pre = preSt[0], setPre = preSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var notifSt = React.useState(window.Notification ? Notification.permission : 'unsupported'); var notif = notifSt[0], setNotif = notifSt[1];
+
+    function toggleDay(d) {
+      setDays(days.indexOf(d) === -1 ? days.concat([d]).sort() : days.filter(function (x) { return x !== d; }));
+    }
+
+    function add() {
+      if (!kid || !days.length) { setMsg('Pick a child and at least one day.'); return; }
+      setBusy(true); setMsg('');
+      props.onSchedule({ profile_id: kid, days: days.join(','), time_of_day: time, category: catId, remind_minutes: pre, enabled: true }, function (e) {
+        setBusy(false); setMsg(e || 'Saved.');
+      });
+    }
+
+    function askNotif() {
+      if (!window.Notification) { return; }
+      Notification.requestPermission().then(function (p) { setNotif(p); });
+    }
+
+    function icsFor(sc, prof) {
+      var hm = sc.time_of_day.split(':');
+      var byday = String(sc.days).split(',').map(function (d) { return ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][parseInt(d, 10)]; }).join(',');
+      var now = new Date();
+      var start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hm[0], 10), parseInt(hm[1], 10), 0);
+      function fmt(d) {
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + 'T' + p(d.getHours()) + p(d.getMinutes()) + '00';
+      }
+      var title = prof.name + ': ' + (sc.category !== 'any' && CONTENT[sc.category] ? CONTENT[sc.category].title : 'Wonder Academy') + ' lesson';
+      return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Wonder Academy//EN',
+        'BEGIN:VEVENT', 'UID:wonder-' + sc.id + '@wonderacademy',
+        'DTSTART:' + fmt(start), 'DTEND:' + fmt(new Date(start.getTime() + 30 * 60000)),
+        'RRULE:FREQ=WEEKLY;BYDAY=' + byday,
+        'SUMMARY:' + title,
+        'DESCRIPTION:Open Wonder Academy',
+        'BEGIN:VALARM', 'TRIGGER:-PT' + (sc.remind_minutes || 15) + 'M', 'ACTION:DISPLAY', 'DESCRIPTION:' + title + ' in ' + (sc.remind_minutes || 15) + ' minutes', 'END:VALARM',
+        'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    }
+
+    function downloadIcs(sc, prof) {
+      var blob = new Blob([icsFor(sc, prof)], { type: 'text/calendar' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = 'wonder-' + prof.name + '.ics';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+
+    var list = (props.data.schedule || []).filter(function (x) { return x.profile_id === kid; });
+    var prof = null, i;
+    for (i = 0; i < props.data.profiles.length; i++) { if (props.data.profiles[i].id === kid) { prof = props.data.profiles[i]; } }
+
+    return h('div', null,
+      h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Lesson schedule'),
+      h('div', { className: 'story-card' },
+        h('p', { style: { fontSize: '17px' } },
+          'Set lesson times. When the time comes, the app announces it by voice, calling the child by name and naming the subject, and shows a Start button.\n\nHonest limit: a web app can only speak while it is open on screen. For reminders that fire when the app is closed, tap Add to calendar on a schedule below; that puts a repeating event with a 15 minute alert into the phone\'s own calendar, which always fires.')),
+
+      window.Notification ? h('div', { className: 'story-card', style: { marginTop: '12px' } },
+        h('div', { className: 'rate-row' },
+          h('span', null, 'Phone notifications: ' + (notif === 'granted' ? 'on' : (notif === 'denied' ? 'blocked in phone settings' : 'not yet allowed'))),
+          notif === 'default' ? h('button', { className: 'btn small green', onClick: askNotif }, 'Allow') : null)) : null,
+
+      props.data.profiles.length ? h('div', { className: 'story-card', style: { marginTop: '12px' } },
+        h('h2', null, 'Add a schedule'),
+        h('div', { className: 'tabs small' }, props.data.profiles.map(function (p) {
+          return h('button', { key: p.id, className: kid === p.id ? 'on' : '', onClick: function () { setKid(p.id); } }, p.avatar + ' ' + p.name);
+        })),
+        h('div', { className: 'sub', style: { textAlign: 'left', marginTop: '10px' } }, 'Days'),
+        h('div', { className: 'tabs small' }, DAY_NAMES.map(function (d, idx) {
+          return h('button', { key: d, className: days.indexOf(idx) !== -1 ? 'on' : '', onClick: function () { toggleDay(idx); } }, d);
+        })),
+        h('div', { className: 'rate-row' }, h('span', null, 'Time'),
+          h('input', { className: 'rate-input', type: 'time', value: time, onChange: function (e) { setTime(e.target.value); } })),
+        h('div', { className: 'rate-row' }, h('span', null, 'Subject'),
+          h('select', { className: 'select', style: { width: 'auto' }, value: catId, onChange: function (e) { setCatId(e.target.value); } },
+            [h('option', { key: 'any', value: 'any' }, 'Any (their choice)')].concat(CAT_ORDER.map(function (id) {
+              return CONTENT[id] ? h('option', { key: id, value: id }, CONTENT[id].emoji + ' ' + CONTENT[id].title) : null;
+            })))),
+        h('div', { className: 'rate-row' }, h('span', null, 'Remind before'),
+          h('select', { className: 'select', style: { width: 'auto' }, value: pre, onChange: function (e) { setPre(parseInt(e.target.value, 10)); } },
+            [5, 10, 15, 30, 60].map(function (m) { return h('option', { key: m, value: m }, m + ' minutes'); }))),
+        h('div', { className: 'actionrow' }, h('button', { className: 'btn green small', disabled: busy, onClick: add }, 'Save schedule')),
+        msg ? h('div', { className: 'sub' }, msg) : null
+      ) : null,
+
+      list.length ? h('div', { style: { marginTop: '14px' } },
+        h('h2', { style: { fontSize: '20px', margin: '0 0 6px' } }, (prof ? prof.name : '') + "'s schedules"),
+        list.map(function (sc) {
+          var dn = String(sc.days).split(',').map(function (d) { return DAY_NAMES[parseInt(d, 10)]; }).join(' ');
+          return h('div', { key: sc.id, className: 'score-row' },
+            h('span', { className: 'em2' }, '⏰'),
+            h('span', { className: 'fill' },
+              h('span', { className: 'vname' }, sc.time_of_day + ' · ' + (sc.category !== 'any' && CONTENT[sc.category] ? CONTENT[sc.category].title : 'Any subject')),
+              h('span', { className: 'vmeta' }, dn + ' · reminder ' + sc.remind_minutes + ' min before')),
+            h('button', { className: 'btn small plain', onClick: function () { downloadIcs(sc, prof); } }, '📅'),
+            h('button', { className: 'btn small plain', onClick: function () { props.onDeleteSchedule(sc.id, function (e) { setMsg(e || 'Removed.'); }); } }, '✕'));
+        })) : null,
+
+      h('div', { className: 'actionrow', style: { marginTop: '14px' } },
+        h('button', { className: 'btn grape small', onClick: function () {
+          var p = prof || props.data.profiles[0];
+          stopSpeak(); speak('Hello ' + (p ? p.name : 'there') + '! Your Physics lesson starts in 15 minutes. Get ready!');
+        } }, '🔊 Hear the announcement'))
     );
   }
 
@@ -1609,7 +1887,8 @@
           h('div', { className: 'big' }, cat.emoji),
           h('div', { className: 'name' }, cat.title),
           h('div', { className: 'meter' }, h('div', { style: { width: pct + '%', background: cat.color } })),
-          h('div', { className: 'count' }, playable.length ? (done + ' of ' + playable.length + (cyc > 1 ? ' · round ' + cyc : '')) : 'Coming soon!')
+          h('div', { className: 'count' }, playable.length ? (done + ' of ' + playable.length + (cyc > 1 ? ' · round ' + cyc : ''))
+            : ((cat.minAge && props.profile.age < cat.minAge) ? 'When you are ' + cat.minAge + '!' : 'Coming soon!'))
         );
       }))
     );
@@ -1716,7 +1995,6 @@
       speak(textFor(p), function () {
         setReading(false);
         if (readAllRef.current && p < last) {
-          sfx('page');
           setPage(p + 1);
         } else {
           readAllRef.current = false;
@@ -1785,7 +2063,9 @@
     return h('div', null,
       h('div', { className: 'backrow' },
         h('button', { className: 'btn plain small', onClick: props.onBack }, '← Back'),
-        h('div', { className: 'chip' }, cat.emoji + ' ' + cat.title)
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+          h('div', { className: 'chip' }, cat.emoji + ' ' + cat.title),
+          document.documentElement.requestFullscreen ? h('button', { className: 'chip', onClick: toggleFullscreen, title: 'Full screen' }, '⛶') : null)
       ),
       h('div', { className: 'page-dots' }, pages.map(function (_, idx) {
         return h('span', { key: idx, className: idx === page ? 'cur' : (idx < page ? 'seen' : '') });
@@ -1848,8 +2128,11 @@
       var correct = realIdx === q.answer;
       setPicked({ dispIdx: dispIdx, correct: correct });
       setStreak(correct ? streak + 1 : 0);
+      stopSpeak();
       sfx(correct ? 'good' : 'bad');
-      if (shouldAutoRead(tier)) { speak(correct ? 'Yes! Great job!' : 'Good try! The answer was ' + q.choices[q.answer] + '.'); }
+      if (shouldAutoRead(tier)) {
+        setTimeout(function () { speak(correct ? 'Yes! Great job!' : 'Good try! The answer was ' + q.choices[q.answer] + '.'); }, sfxEnabled() ? 350 : 0);
+      }
       if (!correct) { missedRef.current = missedRef.current.concat([pos]); }
       setTimeout(function () {
         var nextAnswers = answers.concat([correct]);
@@ -1907,6 +2190,188 @@
     );
   }
 
+  /* ---------------- activities (auto-generated from each lesson) ---------------- */
+
+  function firstEmoji(art) {
+    var m = String(art || '').match(/([\uD800-\uDBFF][\uDC00-\uDFFF](?:\u200D[\uD800-\uDBFF][\uDC00-\uDFFF])*|[\u2600-\u27BF])/);
+    return m ? m[0] : String(art || '').slice(0, 2);
+  }
+
+  function activitiesFor(con, tier) {
+    var body = con[tier] || {};
+    var pages = (body.pages && body.pages.length >= 3) ? body.pages : null;
+    var words = (body.words && body.words.length >= 3) ? body.words : null;
+    var list = [];
+    if (pages) { list.push({ id: 'order', label: '🔢 Put the story in order', desc: 'Tap the pictures in the order they happened.' }); }
+    if (words) { list.push({ id: 'match', label: '🔗 Match the words', desc: 'Tap a word, then tap what it means.' }); }
+    if (pages) { list.push({ id: 'memory', label: '🃏 Memory pairs', desc: 'Flip the cards and find the matching pictures.' }); }
+    return list;
+  }
+
+  function ActivityScreen(props) {
+    var cat = CONTENT[props.catId];
+    var con = null, i;
+    for (i = 0; i < cat.concepts.length; i++) { if (cat.concepts[i].id === props.conceptId) { con = cat.concepts[i]; } }
+    var tier = tierOf(props.profile.age);
+    var young = tier === 'young';
+    var body = con[tier];
+    var options = activitiesFor(con, tier);
+    var kindSt = React.useState(options.length === 1 ? options[0].id : null); var kind = kindSt[0], setKind = kindSt[1];
+    var doneSt = React.useState(false); var done = doneSt[0], setDone = doneSt[1];
+
+    React.useEffect(function () {
+      if (done) { sfx('win'); if (shouldAutoRead(tier)) { speak('Amazing! You finished the activity!'); } }
+    }, [done]);
+
+    var header = h('div', { className: 'backrow' },
+      h('button', { className: 'btn plain small', onClick: props.onBack }, '← Back'),
+      h('div', { className: 'chip' }, con.emoji + ' ' + con.title));
+
+    if (!options.length) {
+      return h('div', null, header, h('div', { className: 'coming' }, 'No activity for this lesson yet.'));
+    }
+
+    if (!kind) {
+      return h('div', null, header,
+        h('h1', { style: { textAlign: 'center', fontSize: '26px', margin: '14px 0' } }, '🎲 Pick an activity'),
+        h('div', { className: 'grid', style: { gridTemplateColumns: '1fr' } }, options.map(function (o) {
+          return h('button', { key: o.id, className: 'tile', onClick: function () { setKind(o.id); } },
+            h('div', { style: { fontSize: '22px', fontWeight: 800 } }, o.label),
+            h('div', { className: 'sub', style: { margin: '4px 0 0' } }, o.desc));
+        })));
+    }
+
+    if (done) {
+      return h('div', { className: 'center-wrap', style: { paddingTop: '20px', position: 'relative' } },
+        h(Confetti, { many: false }),
+        h('div', { className: 'burst' }, '🌟'),
+        h('h1', null, 'Activity complete!'),
+        h('div', { className: 'sub' }, 'You really understood ' + con.title + '.'),
+        h('div', { className: 'actionrow' },
+          options.length > 1 ? h('button', { className: 'btn plain', onClick: function () { setKind(null); setDone(false); } }, 'Another activity') : null,
+          h('button', { className: 'btn green', onClick: props.onBack }, 'Back to map 🗺')));
+    }
+
+    var game;
+    if (kind === 'order') { game = h(OrderGame, { pages: body.pages, young: young, onDone: function () { setDone(true); } }); }
+    else if (kind === 'match') { game = h(MatchGame, { words: body.words, onDone: function () { setDone(true); } }); }
+    else { game = h(MemoryGame, { pages: body.pages, young: young, onDone: function () { setDone(true); } }); }
+
+    return h('div', null, header, game);
+  }
+
+  function OrderGame(props) {
+    var items = props.pages.slice(0, props.young ? 3 : 4).map(function (p, idx) {
+      return { idx: idx, art: p.art, text: String(p.text).split(/[.!?]/)[0].slice(0, 60) };
+    });
+    var shufSt = React.useState(function () { return shuffle(items); }); var shuf = shufSt[0];
+    var pickedSt = React.useState([]); var picked = pickedSt[0], setPicked = pickedSt[1];
+    var wrongSt = React.useState(null); var wrong = wrongSt[0], setWrong = wrongSt[1];
+
+    function tap(it) {
+      if (picked.indexOf(it.idx) !== -1) { return; }
+      if (it.idx === picked.length) {
+        sfx('good');
+        var next = picked.concat([it.idx]);
+        setPicked(next);
+        if (next.length === items.length) { setTimeout(props.onDone, 500); }
+      } else {
+        sfx('bad'); setWrong(it.idx);
+        if (shouldAutoRead(props.young ? 'young' : 'older')) { speak('Not that one. What happened first?'); }
+        setTimeout(function () { setWrong(null); }, 600);
+      }
+    }
+
+    return h('div', null,
+      h('div', { className: 'question-card' },
+        h('div', { className: 'q' + (props.young ? ' big-q' : '') }, 'What happened first? Tap them in order.'),
+        h('div', { className: 'order-grid' }, shuf.map(function (it) {
+          var n = picked.indexOf(it.idx);
+          var cls = 'order-card' + (n !== -1 ? ' done' : '') + (wrong === it.idx ? ' wrong' : '');
+          return h('button', { key: it.idx, className: cls, onClick: function () { tap(it); } },
+            n !== -1 ? h('span', { className: 'order-num' }, n + 1) : null,
+            h('div', { className: 'order-art' }, it.art),
+            h('div', { className: 'order-text' }, it.text));
+        }))));
+  }
+
+  function MatchGame(props) {
+    var words = props.words.slice(0, 4);
+    var rightSt = React.useState(function () { return shuffle(words.map(function (w, i) { return i; })); }); var right = rightSt[0];
+    var selSt = React.useState(null); var sel = selSt[0], setSel = selSt[1];
+    var doneSt = React.useState([]); var matched = doneSt[0], setMatched = doneSt[1];
+    var shakeSt = React.useState(null); var shake = shakeSt[0], setShake = shakeSt[1];
+
+    function tapMeaning(i) {
+      if (sel === null || matched.indexOf(i) !== -1) { return; }
+      if (i === sel) {
+        sfx('good');
+        var next = matched.concat([i]);
+        setMatched(next); setSel(null);
+        if (next.length === words.length) { setTimeout(props.onDone, 500); }
+      } else {
+        sfx('bad'); setShake(i); setTimeout(function () { setShake(null); }, 500);
+      }
+    }
+
+    return h('div', null,
+      h('div', { className: 'question-card' },
+        h('div', { className: 'q' }, 'Tap a word, then tap its meaning.'),
+        h('div', { className: 'match-cols' },
+          h('div', { className: 'match-col' }, words.map(function (w, i) {
+            return h('button', { key: i, className: 'choice' + (sel === i ? ' correct' : '') + (matched.indexOf(i) !== -1 ? ' faded' : ''),
+              disabled: matched.indexOf(i) !== -1, onClick: function () { setSel(i); } }, w.word);
+          })),
+          h('div', { className: 'match-col' }, right.map(function (i) {
+            return h('button', { key: i, className: 'choice small-choice' + (matched.indexOf(i) !== -1 ? ' correct faded' : '') + (shake === i ? ' wrong' : ''),
+              disabled: matched.indexOf(i) !== -1, onClick: function () { tapMeaning(i); } }, words[i].meaning);
+          })))));
+  }
+
+  function MemoryGame(props) {
+    var seen = {}, faces = [];
+    props.pages.forEach(function (p) {
+      var e = firstEmoji(p.art);
+      if (e && !seen[e]) { seen[e] = 1; faces.push(e); }
+    });
+    faces = faces.slice(0, props.young ? 3 : 4);
+    var cardsSt = React.useState(function () {
+      return shuffle(faces.concat(faces).map(function (f, i) { return { id: i, face: f }; }));
+    });
+    var cards = cardsSt[0];
+    var upSt = React.useState([]); var up = upSt[0], setUp = upSt[1];
+    var wonSt = React.useState([]); var won = wonSt[0], setWon = wonSt[1];
+    var lockSt = React.useState(false); var lock = lockSt[0], setLock = lockSt[1];
+
+    function flip(c) {
+      if (lock || up.indexOf(c.id) !== -1 || won.indexOf(c.face) !== -1) { return; }
+      var next = up.concat([c.id]);
+      setUp(next);
+      if (next.length === 2) {
+        var a = cards.filter(function (x) { return x.id === next[0]; })[0];
+        var b = cards.filter(function (x) { return x.id === next[1]; })[0];
+        if (a.face === b.face) {
+          sfx('good');
+          var w = won.concat([a.face]);
+          setWon(w); setUp([]);
+          if (w.length === faces.length) { setTimeout(props.onDone, 500); }
+        } else {
+          setLock(true);
+          setTimeout(function () { setUp([]); setLock(false); }, 800);
+        }
+      }
+    }
+
+    return h('div', null,
+      h('div', { className: 'question-card' },
+        h('div', { className: 'q' + (props.young ? ' big-q' : '') }, 'Find the matching pairs!'),
+        h('div', { className: 'memory-grid' }, cards.map(function (c) {
+          var show = up.indexOf(c.id) !== -1 || won.indexOf(c.face) !== -1;
+          return h('button', { key: c.id, className: 'memory-card' + (show ? ' up' : '') + (won.indexOf(c.face) !== -1 ? ' won' : ''),
+            onClick: function () { flip(c); } }, show ? c.face : '❔');
+        }))));
+  }
+
   function ResultsScreen(props) {
     var cat = CONTENT[props.catId];
     var ok = hasContentFor(props.data, props.pid, cat);
@@ -1917,6 +2382,9 @@
     var nextId = null, i;
     for (i = 0; i < playable.length; i++) { if (!dm[playable[i].id]) { nextId = playable[i].id; break; } }
     var cycleJustDone = nextId === null;
+    var conNow = null, ci;
+    for (ci = 0; ci < cat.concepts.length; ci++) { if (cat.concepts[ci].id === props.conceptId) { conNow = cat.concepts[ci]; } }
+    var hasActivity = conNow ? activitiesFor(conNow, tierOf(props.profile.age)).length > 0 : false;
     var s = props.score;
     var msg = s >= 8 ? 'You earned a Smarty Badge! 🏅' : (s >= 5 ? 'Great learning!' : 'Practice makes perfect!');
     var starStr = '', j;
@@ -1933,6 +2401,7 @@
       cycleJustDone ? h('div', { className: 'sub' }, '🏆 WOW! You finished every adventure in ' + cat.title + '! A trophy is yours. A brand new round is open!') : null,
       h('div', { className: 'actionrow' },
         h('button', { className: 'btn plain', onClick: props.onCategory }, 'Back to map'),
+        hasActivity ? h('button', { className: 'btn', style: { background: '#C9B6EE' }, onClick: props.onActivity }, '🎲 Activity') : null,
         h('button', { className: 'btn green', onClick: function () { props.onNext(nextId); } }, nextId ? 'Next adventure ▶' : 'See the map 🗺')
       )
     );

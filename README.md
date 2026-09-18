@@ -6,7 +6,7 @@ A learning app for kids with a real parent login, kid profiles, age-appropriate 
 
 - **Parent login** with a real email and password (Supabase Auth). Nobody reaches the app without signing in.
 - **Parent PIN** for the parent area, so kids who already have a signed-in tablet cannot add or delete profiles.
-- 12 categories, 30 concepts each, and every category is playable. Science & Nature has all 30 written (first 10 in storybook format). The other 7 categories each have their first 3 concepts written in full storybook format, with the remaining 27 showing "coming soon" until later waves. 51 playable concepts and 1,020 questions so far.
+- 13 categories, 30 concepts each, and every category is playable. Science & Nature has all 30 written (first 10 in storybook format). The other 7 categories each have their first 3 concepts written in full storybook format, with the remaining 27 showing "coming soon" until later waves. 51 playable concepts and 1,020 questions so far.
 - **Storybook lessons.** Each concept is a set of illustrated pages the child taps through, not one block of text, ending with a "Did you know" fact, a hands-on "Try it at home" activity, and (older tier) a new-words list.
 - **Real age separation.** The two tiers are written separately, not shortened versions of each other. Age 6 and under: 4 pages of short repetitive sentences (about 90 words), big type, giant emoji art, 3-choice questions, and pages that read themselves aloud automatically. Age 7 and up: 6 pages of genuine depth (about 280 words) with real vocabulary, numbers, and explanations, plus 4-choice questions.
 - **Separate video slots per age**, so you can point a 4-year-old and an 8-year-old at different videos for the same topic.
@@ -60,6 +60,31 @@ The service worker uses a network-first strategy, so a fresh version is picked u
 Once a device has opened the app, lessons and quizzes keep working without internet. Progress saves locally and syncs to Supabase next time the device is online. Signing in for the first time does require a connection.
 
 
+
+
+## Lesson schedule and reminders
+
+Parent area > Schedule tab. Pick a child, days, time, subject and how many minutes before to remind. When the reminder time comes, the app speaks an announcement naming the child and subject and shows a Start button that opens the right subject for them. A second announcement fires at lesson time.
+
+Honest limit: a web app can only speak while it is open on screen. For reminders that fire when the app is closed, tap the calendar icon on a schedule to download an .ics file. Open it on the phone and it adds a repeating event with an alert to the phone's own calendar, which always fires. Do this on each device.
+
+Notifications: tap Allow in the Schedule tab and the app also posts a phone notification when it is open in the background.
+
+## Activities
+
+After a quiz, a 🎲 Activity button offers up to three games built automatically from that lesson: put the story in order, match the words to their meanings (older tier), and memory pairs. They check understanding without being another quiz.
+
+## Focus mode and full screen
+
+During a lesson or quiz the top and bottom bars hide and the illustration and text grow. A ⛶ button on lessons toggles true full screen on devices that support it.
+
+## Age filtering
+
+Content is written separately for each age tier. Some concepts also carry a minimum age (for example coding and AI in Technology are 6 or 7 and up) and are hidden from younger profiles. Add `minAge: 7` to any concept in a content file to do the same.
+
+## One SQL file for everything
+
+`supabase-all-updates.sql` contains every database change and is safe to run repeatedly. If the parent area shows a red Database update needed banner, run this file in Supabase > SQL Editor and the banner goes away on next sign-in.
 
 ## Scores
 

@@ -1,14 +1,14 @@
 /* Wonder Academy service worker.
    Network first, so a new version always wins. The cache is only a fallback
    for when the device is offline. Bump CACHE_VERSION on every release. */
-var CACHE_VERSION = 'wonder-v12';
+var CACHE_VERSION = 'wonder-v13';
 
 var PRECACHE = [
   './', './index.html', './styles.css', './config.js', './auth.js', './app.js',
   './content/science.js', './content/islamic-history.js', './content/geography.js',
   './content/analytical.js', './content/reasoning.js', './content/iq.js',
   './content/physics.js', './content/biology.js',
-  './content/story-time.js', './content/math.js', './content/inventors.js', './content/character.js', './pronounce.js',
+  './content/story-time.js', './content/math.js', './content/inventors.js', './content/character.js', './content/technology.js', './pronounce.js',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png', './manifest.json'
 ];
 
