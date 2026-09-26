@@ -681,3 +681,19 @@ html.force-phone .app.focus .as-item { font-size: 62px !important; }
 
 /* Devanagari and other non-Latin scripts need a little more line height */
 .tr-text { line-height: 1.75 !important; }
+
+/* Voice setup card: this is the first thing a parent should see in Narrator */
+.story-card.voice-hero {
+  background: linear-gradient(160deg, #DFF3E2, #C9EBD1);
+  border-width: 4px;
+}
+.voice-steps {
+  background: rgba(255,255,255,.75);
+  border: 3px solid #223A5E; border-radius: 16px;
+  padding: 12px 14px; margin-top: 12px;
+  font-size: 16px; font-weight: 700; line-height: 1.9;
+}
+.voice-steps code {
+  background: #223A5E; color: #fff; border-radius: 6px;
+  padding: 2px 7px; font-size: 14px; font-family: ui-monospace, Menlo, Consolas, monospace;
+}

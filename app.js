@@ -1760,57 +1760,6 @@
     return lang;
   }
 
-  function CloudVoiceCard(props) {
-    var st = props.settings || {};
-    var engSt = React.useState(st.voice_engine || 'device'); var engine = engSt[0], setEngine = engSt[1];
-    var idSt = React.useState(st.cloud_voice_id || ''); var vid = idSt[0], setVid = idSt[1];
-    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
-    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
-
-    function save(e2, v2) {
-      setBusy(true); setMsg('');
-      props.onSaveRates({ voice_engine: e2, cloud_voice_id: v2.trim() }, function (e) {
-        setBusy(false);
-        if (e) { setMsg(e); return; }
-        setCloudVoice(e2, v2.trim());
-        setMsg(e2 === 'cloud' ? 'Saved. Your voice is now the narrator on every device.' : 'Saved. Using device voices.');
-      });
-    }
-
-    function test() {
-      if (!vid.trim()) { setMsg('Paste your Voice ID first.'); return; }
-      setBusy(true); setMsg('Generating a test sentence in your voice...');
-      var prevE = CLOUD.engine, prevV = CLOUD.voiceId;
-      setCloudVoice('cloud', vid.trim());
-      cloudSpeak('Hello! This is your voice reading a story. Once upon a time, in the city of Makkah, a boy looked up at the stars.', function () {
-        setBusy(false); setMsg('If that sounded like you, tap Use my voice.');
-        setCloudVoice(prevE, prevV);
-      });
-      setTimeout(function () { if (busy) { setBusy(false); } }, 15000);
-    }
-
-    return h('div', { className: 'story-card', style: { marginTop: '16px', background: '#FFF6D8' } },
-      h('h2', null, '🎤 Your own voice, live (paid, optional)'),
-      h('p', { style: { fontSize: '16px' } },
-        'Alternative to the free library above: generate audio live in your voice with ElevenLabs. Higher quality and no batch step, but needs a paid plan (Starter, about $5 a month) and a small function on Supabase so your key never sits in the app.\n\n' +
-        '1. At elevenlabs.io, subscribe to Starter, open Voices, Add a new voice, Instant Voice Clone. Record yourself reading anything for 1 to 2 minutes in a quiet room. Save it and copy the Voice ID.\n' +
-        '2. In ElevenLabs, Profile, API keys, create a key.\n' +
-        '3. In Supabase, Edge Functions, create a function named tts and paste in the code from the tts-function.ts file. Then Edge Functions, Secrets, add ELEVENLABS_API_KEY with your key.\n' +
-        '4. Paste the Voice ID below, tap Test, then Use my voice.'),
-      h('div', { className: 'rate-row' }, h('span', null, 'Voice ID'),
-        h('input', { className: 'rate-input', style: { width: '60%', textAlign: 'left' }, value: vid, placeholder: 'e.g. 21m00Tcm4TlvDq8ikWAM', onChange: function (e) { setVid(e.target.value); } })),
-      h('div', { className: 'tabs small', style: { marginTop: '10px' } },
-        h('button', { className: engine === 'device' ? 'on' : '', onClick: function () { setEngine('device'); save('device', vid); } }, '📱 Device voices'),
-        h('button', { className: engine === 'cloud' ? 'on' : '', disabled: !vid.trim(), onClick: function () { setEngine('cloud'); save('cloud', vid); } }, '🎤 Use my voice')),
-      h('div', { className: 'actionrow' },
-        h('button', { className: 'btn grape small', disabled: busy, onClick: test }, busy ? 'Working...' : '🔊 Test my voice'),
-        h('button', { className: 'btn plain small', onClick: stopSpeak }, 'Stop')),
-      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
-      h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7, marginTop: '6px' } },
-        'Every sentence is generated once and saved, so replaying costs nothing. Roughly 30,000 characters a month on Starter is about 25 to 40 full lessons of new material; after that the kids replay for free. You can also clone a voice speaking Hindi or Urdu by recording the sample in that language.')
-    );
-  }
-
   function LibraryVoiceCard(props) {
     var st = props.settings || {};
     var nameSt = React.useState(st.library_voice || ''); var name = nameSt[0], setName = nameSt[1];
@@ -1851,19 +1800,24 @@
       });
     }
 
-    return h('div', { className: 'story-card', style: { marginTop: '16px', background: '#DFF3E2' } },
-      h('h2', null, '🆓 Your own voice, free'),
+    return h('div', { className: 'story-card voice-hero' },
+      h('h2', null, '🎙️ Use a better voice'),
       h('p', { style: { fontSize: '16px' } },
-        'Generate every lesson in your voice once, for free, using an open-source voice cloner on a free Google Colab GPU (or free Microsoft voices on any PC). The audio is stored in your Supabase project and the app plays it. No subscription.\n\n' +
-        'Full steps are in the file voice-library/COLAB.md in the app folder. It takes an afternoon the first time. Then type the library name you chose (for example dad) here.'),
-      h('div', { className: 'rate-row' }, h('span', null, 'Library name'),
-        h('input', { className: 'rate-input', style: { width: '50%', textAlign: 'left' }, value: name, placeholder: 'dad', onChange: function (e) { setName(e.target.value); } })),
+        'The lessons are read by the phone\'s robot voice right now. You can replace it with a real human-sounding voice, lessons in Hindi, or your own cloned voice. It is free and you only do it once.'),
+      h('div', { className: 'voice-steps' },
+        h('div', null, h('b', null, '1.'), ' On your Windows PC, open the folder ', h('code', null, 'wonder-academy\\voice-library')),
+        h('div', null, h('b', null, '2.'), ' Double-click ', h('code', null, 'SETUP-MY-VOICE.bat')),
+        h('div', null, h('b', null, '3.'), ' Answer its questions and let it finish'),
+        h('div', null, h('b', null, '4.'), ' Type the name it gives you below')),
+      h('div', { className: 'rate-row', style: { marginTop: '12px' } }, h('span', null, 'Voice name'),
+        h('input', { className: 'rate-input', style: { width: '50%', textAlign: 'left' }, value: name, placeholder: 'aria, hindi, dad...', onChange: function (e) { setName(e.target.value); } })),
       h('div', { className: 'actionrow' },
         h('button', { className: 'btn plain small', disabled: busy, onClick: function () { check(name.trim(), null); } }, busy ? 'Checking...' : 'Check'),
-        h('button', { className: 'btn green small', disabled: busy || !name.trim(), onClick: use }, on ? '✓ Using library' : 'Use library'),
-        on ? h('button', { className: 'btn plain small', onClick: off } , 'Switch off') : null),
+        h('button', { className: 'btn green small', disabled: busy || !name.trim(), onClick: use }, on ? '✓ In use' : 'Use this voice'),
+        on ? h('button', { className: 'btn plain small', onClick: off } , 'Back to robot voice') : null),
       msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
-      on && count ? h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7 } }, count + ' clips ready.') : null
+      on && count ? h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7 } },
+        count + ' lines ready' + (LIB.lang ? ' in ' + (LIB.lang === 'hi' ? 'Hindi' : LIB.lang) : '') + '. Anything not made yet still uses the robot voice.') : null
     );
   }
 
@@ -1932,7 +1886,6 @@
     return h('div', null,
       h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Narrator'),
       h(LibraryVoiceCard, { settings: props.settings, onSaveRates: props.onSaveRates }),
-      h(CloudVoiceCard, { settings: props.settings, onSaveRates: props.onSaveRates }),
 
       h('div', { className: 'story-card', style: { marginTop: '16px' } },
         h('h2', null, 'Voice style'),

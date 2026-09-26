@@ -109,8 +109,3 @@ SQL Editor first.
 
 The full set of voice files is roughly 300 MB. Supabase gives you 1 GB free.
 
----
-
-*There is also a paid option using ElevenLabs, set up through `tts-function.ts`.
-You do not need it and it is not recommended. The free route above covers
-everything.*
