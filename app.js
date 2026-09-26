@@ -346,7 +346,7 @@
   /* ---------------- speech ---------------- */
 
   function getVoicePref() {
-    var d = { name: '', rate: 0.9, pitch: 1.0, autoRead: 'young', sfx: false, useRecordings: true };
+    var d = { name: '', rate: 0.88, pitch: 0.97, autoRead: 'young', sfx: false, useRecordings: true };
     try { var r = localStorage.getItem(VOICE_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
     return d;
   }
@@ -368,12 +368,36 @@
     return window.speechSynthesis.getVoices() || [];
   }
 
+  /* Score a voice by how human it is likely to sound. The old version picked the
+     first offline voice, which on Android is usually the worst one on the phone. */
+  function voiceScore(v) {
+    var n = (v.name || '').toLowerCase();
+    var score = 0;
+    if (/natural|neural/.test(n)) { score += 100; }
+    if (/premium|enhanced/.test(n)) { score += 80; }
+    if (/siri/.test(n)) { score += 70; }
+    if (/google/.test(n)) { score += 45; }
+    if (/wavenet|studio|journey/.test(n)) { score += 60; }
+    if (/compact|eloquence|espeak|pico/.test(n)) { score -= 90; }
+    if (!v.localService) { score += 12; }   /* network voices are usually better */
+    var l = (v.lang || '').replace('_', '-').toLowerCase();
+    if (l.indexOf('en-us') === 0) { score += 8; }
+    else if (l.indexOf('en') === 0) { score += 4; }
+    return score;
+  }
+
   function pickVoice(pref) {
     var vs = listVoices(), i;
     if (pref.name) { for (i = 0; i < vs.length; i++) { if (vs[i].name === pref.name) { return vs[i]; } } }
-    for (i = 0; i < vs.length; i++) { if (vs[i].lang && vs[i].lang.indexOf('en') === 0 && vs[i].localService) { return vs[i]; } }
-    for (i = 0; i < vs.length; i++) { if (vs[i].lang && vs[i].lang.indexOf('en') === 0) { return vs[i]; } }
-    return null;
+    var en = vs.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf('en') === 0; });
+    var pool = en.length ? en : vs;
+    if (!pool.length) { return null; }
+    var best = pool[0], bestScore = voiceScore(pool[0]);
+    for (i = 1; i < pool.length; i++) {
+      var sc = voiceScore(pool[i]);
+      if (sc > bestScore) { best = pool[i]; bestScore = sc; }
+    }
+    return best;
   }
 
   var PRON_KEY = 'wonder_pron_v1';
@@ -665,6 +689,31 @@
     speak(texts.join('. '), onEnd);
   }
 
+  /* Break text into the units a person would actually pause between, and remember
+     what ended each one so we know how long that pause should be. */
+  function phrasesOf(text) {
+    var out = [];
+    var re = /[^.!?;:,\u2014]+[.!?;:,\u2014]*/g;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      var raw = m[0];
+      var body = raw.trim();
+      if (!body) { continue; }
+      var last = body.charAt(body.length - 1);
+      var gap = 150;                       /* plain clause break */
+      if (last === ',') { gap = 210; }
+      else if (last === ';' || last === ':' || last === '\u2014') { gap = 300; }
+      else if (last === '.') { gap = 430; }
+      else if (last === '!') { gap = 460; }
+      else if (last === '?') { gap = 480; }
+      /* Very short fragments are part of the same breath, not a new one. */
+      if (body.replace(/[^A-Za-z]/g, '').length < 9 && gap < 400) { gap = 90; }
+      out.push({ text: body, gap: gap, end: last });
+    }
+    if (!out.length) { out.push({ text: text, gap: 300, end: '.' }); }
+    return out;
+  }
+
   function deviceSpeak(text, onEnd) {
     if (!window.speechSynthesis) { if (onEnd) { onEnd(); } return; }
     window.speechSynthesis.cancel();
@@ -672,20 +721,45 @@
     var pref = getVoicePref();
     var voice = pickVoice(pref);
     var clean = pronounce(text);
-    var parts = clean.match(/[^.!?]+[.!?]+["')]?\s*|[^.!?]+$/g) || [clean];
+    var parts = phrasesOf(clean);
+    var baseRate = pref.rate || 0.9;
+    var basePitch = pref.pitch || 1.0;
     var idx = 0;
     if (window.speechSynthesis.paused) { window.speechSynthesis.resume(); }
+
     function next() {
       if (token !== speakToken) { return; }
       if (idx >= parts.length) { if (onEnd) { onEnd(); } return; }
-      var piece = parts[idx++].trim();
-      if (!piece) { next(); return; }
-      var u = new SpeechSynthesisUtterance(piece);
-      u.rate = pref.rate || 0.95; u.pitch = pref.pitch || 1.05;
-      if (voice) { u.voice = voice; u.lang = voice.lang; }
+      var p = parts[idx];
+      var i = idx;
+      idx++;
+
+      var u = new SpeechSynthesisUtterance(p.text);
+
+      /* A person never speaks two sentences at exactly the same pitch and speed.
+         A small, smooth, repeatable drift is what stops it sounding metronomic. */
+      var wobble = Math.sin(i * 1.7) * 0.035 + Math.sin(i * 0.6) * 0.02;
+      var rate = baseRate + wobble * 0.6;
+      var pitch = basePitch + wobble;
+
+      if (p.end === '?') { pitch += 0.07; }            /* questions lift at the end */
+      else if (p.end === '!') { rate += 0.04; pitch += 0.05; }
+      if (i === parts.length - 1) { rate -= 0.05; }     /* settle on the last phrase */
+      if (i === 0) { rate -= 0.02; }                    /* ease in */
+
+      u.rate = Math.max(0.55, Math.min(1.5, rate));
+      u.pitch = Math.max(0.5, Math.min(1.8, pitch));
       u.volume = 1;
-      u.onend = function () { setTimeout(next, 260); };
-      u.onerror = function () { setTimeout(next, 80); };
+      if (voice) { u.voice = voice; u.lang = voice.lang; }
+
+      var done = false;
+      function go() {
+        if (done) { return; }
+        done = true;
+        setTimeout(next, p.gap);
+      }
+      u.onend = go;
+      u.onerror = function () { if (!done) { done = true; setTimeout(next, 80); } };
       window.speechSynthesis.speak(u);
     }
     next();
@@ -1733,14 +1807,17 @@
   }
 
   var VOICE_PRESETS = [
-    { id: 'soothing', label: '🌿 Soothing', rate: 0.86, pitch: 0.98 },
-    { id: 'story', label: '📖 Storyteller', rate: 0.9, pitch: 1.0 },
-    { id: 'teacher', label: '🎓 Clear teacher', rate: 0.98, pitch: 0.95 },
-    { id: 'playful', label: '🎈 Playful', rate: 0.96, pitch: 1.2 },
-    { id: 'calm', label: '🌙 Bedtime', rate: 0.78, pitch: 1.0 }
+    { id: 'story', label: '📖 Storyteller', rate: 0.88, pitch: 0.97 },
+    { id: 'soothing', label: '🌿 Soothing', rate: 0.84, pitch: 0.94 },
+    { id: 'teacher', label: '🎓 Clear teacher', rate: 0.95, pitch: 0.96 },
+    { id: 'playful', label: '🎈 Playful', rate: 0.93, pitch: 1.14 },
+    { id: 'calm', label: '🌙 Bedtime', rate: 0.78, pitch: 0.95 }
   ];
 
-  var SAMPLE = 'Once upon a time, in the city of Makkah, a boy looked up at the stars and wondered who had made them.';
+  var SAMPLE = 'The Sun is a star, just like the tiny twinkling ones you see at night. ' +
+    'The only difference is distance. It is about 150 million kilometres away, ' +
+    'which sounds far, but every other star is thousands of times farther still. ' +
+    'Is that amazing? That closeness is why it fills our sky while the others are only pinpricks of light.';
 
   var LANG_LABELS = {
     'en-us': '🇺🇸 US English', 'en-gb': '🇬🇧 British English', 'en-in': '🇮🇳 Indian English', 'en-au': '🇦🇺 Australian English',
@@ -1760,35 +1837,166 @@
     return lang;
   }
 
+  /* ---------------- Voice Studio: generate voices from inside the app ---------------- */
+
+  /* Every line the app ever speaks, in the order worth generating. */
+  function allSpokenLines() {
+    var out = [], seen = {};
+    function add(t) {
+      var s = String(t || '').trim();
+      if (s && !seen[s]) { seen[s] = 1; out.push(s); }
+    }
+    ['Yes! Great job!', 'Good try!', 'The answer was', 'Option 1', 'Option 2', 'Option 3', 'Option 4',
+     'Amazing! You finished the activity!', 'Wow!', 'Did you know?', 'Try it at home.', 'New words.'
+    ].forEach(add);
+
+    var pages = [], extras = [], quiz = [];
+    CAT_ORDER.forEach(function (catId) {
+      var cat = CONTENT[catId];
+      if (!cat) { return; }
+      cat.concepts.forEach(function (con) {
+        ['young', 'older'].forEach(function (tier) {
+          var b = con[tier];
+          if (!b || !b.questions || !b.questions.length) { return; }
+          if (b.pages && b.pages.length) { b.pages.forEach(function (p) { pages.push(p.text); }); }
+          else if (b.story) { pages.push(b.story); }
+          var t = [];
+          if (b.funFact) { t.push((tier === 'young' ? 'Wow! ' : 'Did you know? ') + b.funFact); }
+          if (b.tryThis) { t.push('Try it at home. ' + b.tryThis); }
+          if (b.words && b.words.length) {
+            t.push('New words. ' + b.words.map(function (x) { return x.word + ' means ' + x.meaning; }).join(' '));
+          }
+          if (t.length) { extras.push(t.join(' ')); }
+          b.questions.forEach(function (q) {
+            quiz.push(q.q);
+            q.choices.forEach(function (c) { quiz.push(c); });
+          });
+        });
+      });
+    });
+    pages.forEach(add); extras.forEach(add); quiz.forEach(add);
+    return out;
+  }
+
+  var STUDIO_VOICES = [
+    { id: 'aria',     label: '🇺🇸 Woman, American',  voice: 'en-US-AriaNeural',    lang: '' },
+    { id: 'guy',      label: '🇺🇸 Man, American',    voice: 'en-US-GuyNeural',     lang: '' },
+    { id: 'neerja',   label: '🇮🇳 Woman, Indian',    voice: 'en-IN-NeerjaNeural',  lang: '' },
+    { id: 'prabhat',  label: '🇮🇳 Man, Indian',      voice: 'en-IN-PrabhatNeural', lang: '' },
+    { id: 'hindi',    label: '🇮🇳 Hindi, woman',     voice: 'hi-IN-SwaraNeural',   lang: 'hi' },
+    { id: 'hindiman', label: '🇮🇳 Hindi, man',       voice: 'hi-IN-MadhurNeural',  lang: 'hi' }
+  ];
+
+  function callVoiceFn(payload, cb) {
+    var sess = AUTH.getSession();
+    if (!sess) { cb('Signed out', null); return; }
+    fetch(CFG.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/voice', {
+      method: 'POST',
+      headers: {
+        'apikey': CFG.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + sess.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var d = null;
+        try { d = JSON.parse(t); } catch (e) {}
+        if (!r.ok) { cb((d && d.error) || t || ('error ' + r.status), null); return; }
+        cb(null, d);
+      });
+    }).catch(function () {
+      cb('Could not reach the voice function. Is it deployed in Supabase and named exactly "voice"?', null);
+    });
+  }
+
   function LibraryVoiceCard(props) {
     var st = props.settings || {};
-    var nameSt = React.useState(st.library_voice || ''); var name = nameSt[0], setName = nameSt[1];
+    var pickSt = React.useState(STUDIO_VOICES[0].id); var pick = pickSt[0], setPick = pickSt[1];
     var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
     var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
-    var countSt = React.useState(LIB.ready ? Object.keys(LIB.keys).length : 0); var count = countSt[0], setCount = countSt[1];
+    var progSt = React.useState(null); var prog = progSt[0], setProg = progSt[1];
+    var stopRef = React.useRef(false);
+    var activeName = st.library_voice || '';
     var on = st.voice_engine === 'library';
 
-    function check(n, then) {
-      setBusy(true); setMsg('Looking for library "' + n + '"...');
-      loadLibrary(n, function () {
+    function chosen() {
+      var i;
+      for (i = 0; i < STUDIO_VOICES.length; i++) { if (STUDIO_VOICES[i].id === pick) { return STUDIO_VOICES[i]; } }
+      return STUDIO_VOICES[0];
+    }
+
+    function test() {
+      var v = chosen();
+      setBusy(true); setMsg('Testing... this takes a few seconds.');
+      callVoiceFn({ action: 'test', voice: v.voice, lang: v.lang }, function (err, d) {
         setBusy(false);
-        var c = LIB.ready ? Object.keys(LIB.keys).length : 0;
-        setCount(c);
-        if (!LIB.ready) { setMsg('No library named "' + n + '" found in your storage yet. Generate one first (see voice-library/COLAB.md).'); if (then) { then(false); } return; }
-        setMsg('Found ' + c + ' clips.');
-        if (then) { then(true); }
+        if (err) { setMsg('❌ ' + err); return; }
+        var okEdge = d.edge && d.edge.indexOf('ok') === 0;
+        var okGoog = d.google && d.google.indexOf('ok') === 0;
+        if (okEdge || okGoog) {
+          setMsg('✅ Working' + (okEdge ? ' (best quality)' : ' (backup voice)') +
+            '. It will say: "' + (d.spoken || '') + '"');
+        } else {
+          setMsg('❌ Neither provider responded.\nEdge: ' + d.edge + '\nGoogle: ' + d.google);
+        }
       });
     }
 
+    function generate() {
+      var v = chosen();
+      var lines = allSpokenLines();
+      stopRef.current = false;
+      setBusy(true);
+      setProg({ done: 0, total: lines.length, made: 0 });
+      setMsg('Starting. You can leave this screen open and keep using your phone.');
+
+      var BATCH = 12;
+      var i = 0, made = 0;
+      function step() {
+        if (stopRef.current) {
+          setBusy(false);
+          setMsg('Stopped. ' + made + ' lines made. Run it again any time to continue.');
+          return;
+        }
+        if (i >= lines.length) {
+          setBusy(false); setProg(null);
+          setMsg('🎉 All done. ' + made + ' lines made. Tap "Use this voice" below.');
+          loadLibrary(v.id, function () {});
+          return;
+        }
+        var batch = lines.slice(i, i + BATCH);
+        callVoiceFn({ action: 'generate', name: v.id, voice: v.voice, lang: v.lang, lines: batch },
+          function (err, d) {
+            if (err) {
+              setBusy(false); setProg(null);
+              setMsg('❌ Stopped: ' + err);
+              return;
+            }
+            made += (d.made || 0);
+            i += batch.length;
+            setProg({ done: i, total: lines.length, made: made });
+            setTimeout(step, 150);
+          });
+      }
+      step();
+    }
+
     function use() {
-      var n = name.trim();
-      if (!n) { setMsg('Type the library name you used when generating.'); return; }
-      check(n, function (ok) {
-        if (!ok) { return; }
-        props.onSaveRates({ voice_engine: 'library', library_voice: n }, function (e) {
+      var v = chosen();
+      setBusy(true); setMsg('');
+      loadLibrary(v.id, function () {
+        var count = LIB.ready ? Object.keys(LIB.keys).length : 0;
+        if (!count) {
+          setBusy(false);
+          setMsg('Nothing generated for this voice yet. Tap "Make the voices" first.');
+          return;
+        }
+        props.onSaveRates({ voice_engine: 'library', library_voice: v.id }, function (e) {
+          setBusy(false);
           if (e) { setMsg(e); return; }
           setCloudVoice('library', '');
-          setMsg('Saved. Lessons now play from your library on every device. Anything not generated yet uses the device voice.');
+          setMsg('✅ Done. ' + count + ' lines will now play in this voice on every device.');
         });
       });
     }
@@ -1796,30 +2004,48 @@
     function off() {
       props.onSaveRates({ voice_engine: 'device' }, function (e) {
         if (e) { setMsg(e); return; }
-        setCloudVoice('device', ''); setMsg('Using device voices.');
+        setCloudVoice('device', ''); setMsg('Back to the basic phone voice.');
       });
     }
 
+    var pctDone = prog ? Math.round(prog.done / prog.total * 100) : 0;
+
     return h('div', { className: 'story-card voice-hero' },
-      h('h2', null, '🎙️ Use a better voice'),
+      h('h2', null, '🎙️ Voice Studio'),
       h('p', { style: { fontSize: '16px' } },
-        'The lessons are read by the phone\'s robot voice right now. You can replace it with a real human-sounding voice, lessons in Hindi, or your own cloned voice. It is free and you only do it once.'),
-      h('div', { className: 'voice-steps' },
-        h('div', null, h('b', null, '1.'), ' On your Windows PC, open the folder ', h('code', null, 'wonder-academy\\voice-library')),
-        h('div', null, h('b', null, '2.'), ' Double-click ', h('code', null, 'SETUP-MY-VOICE.bat')),
-        h('div', null, h('b', null, '3.'), ' Answer its questions and let it finish'),
-        h('div', null, h('b', null, '4.'), ' Type the name it gives you below')),
-      h('div', { className: 'rate-row', style: { marginTop: '12px' } }, h('span', null, 'Voice name'),
-        h('input', { className: 'rate-input', style: { width: '50%', textAlign: 'left' }, value: name, placeholder: 'aria, hindi, dad...', onChange: function (e) { setName(e.target.value); } })),
-      h('div', { className: 'actionrow' },
-        h('button', { className: 'btn plain small', disabled: busy, onClick: function () { check(name.trim(), null); } }, busy ? 'Checking...' : 'Check'),
-        h('button', { className: 'btn green small', disabled: busy || !name.trim(), onClick: use }, on ? '✓ In use' : 'Use this voice'),
-        on ? h('button', { className: 'btn plain small', onClick: off } , 'Back to robot voice') : null),
-      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
-      on && count ? h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7 } },
-        count + ' lines ready' + (LIB.lang ? ' in ' + (LIB.lang === 'hi' ? 'Hindi' : LIB.lang) : '') + '. Anything not made yet still uses the robot voice.') : null
+        'Lessons are read by the basic phone voice right now. Pick a real human-sounding voice below and tap Make the voices. Everything happens here, nothing to install.'),
+
+      h('div', { className: 'voice-grid' }, STUDIO_VOICES.map(function (v) {
+        return h('button', {
+          key: v.id,
+          className: 'voice-pick' + (pick === v.id ? ' sel' : '') + (activeName === v.id && on ? ' active' : ''),
+          onClick: function () { setPick(v.id); setMsg(''); }
+        }, h('span', null, v.label),
+           activeName === v.id && on ? h('span', { className: 'voice-live' }, 'in use') : null);
+      })),
+
+      h('div', { className: 'actionrow', style: { marginTop: '12px' } },
+        h('button', { className: 'btn plain small', disabled: busy, onClick: test }, '1. Test it'),
+        h('button', { className: 'btn small', disabled: busy, onClick: generate }, '2. Make the voices'),
+        h('button', { className: 'btn green small', disabled: busy, onClick: use }, '3. Use this voice')),
+
+      busy && prog ? h('div', { className: 'gen-prog' },
+        h('div', { className: 'gen-bar' }, h('div', { style: { width: pctDone + '%' } })),
+        h('div', { className: 'gen-lbl' }, pctDone + '%  ·  ' + prog.made + ' lines made  ·  ' +
+          (prog.total - prog.done) + ' to go'),
+        h('button', { className: 'btn plain small', onClick: function () { stopRef.current = true; } }, 'Stop')
+      ) : null,
+
+      msg ? h('div', { className: 'gen-msg' }, msg) : null,
+
+      on ? h('div', { className: 'actionrow' },
+        h('button', { className: 'btn plain small', onClick: off }, 'Back to basic phone voice')) : null,
+
+      h('div', { className: 'sub', style: { fontSize: '14px', opacity: .75, marginTop: '10px' } },
+        'First run takes a while because there are thousands of lines. You can stop any time and continue later; it never redoes finished work. Story pages come first, quiz questions last.')
     );
   }
+
 
   function VoiceTab(props) {
     var prefSt = React.useState(getVoicePref()); var pref = prefSt[0], setPref = prefSt[1];
@@ -1905,8 +2131,19 @@
 
       h('div', { className: 'story-card', style: { marginTop: '16px' } },
         h('h2', null, 'Choose a voice'),
+        (function () {
+          var auto = pickVoice({ name: pref.name || '' });
+          var q = auto ? voiceQuality(auto) : '';
+          return h('div', { className: 'sub', style: { textAlign: 'left' } },
+            auto
+              ? h('span', null, 'Now using: ', h('b', null, auto.name), ' · ', langLabel(auto.lang),
+                  q === 'Natural' ? h('span', { style: { color: '#2E7D32' } }, ' · high quality')
+                    : h('span', { style: { color: '#B06E00' } },
+                        ' · basic quality, see "Want better voices?" below for a big improvement'))
+              : 'No voices found on this device yet.');
+        })(),
         h('div', { className: 'sub', style: { textAlign: 'left' } },
-          voices.length + ' voice' + (voices.length === 1 ? '' : 's') + ' on this device, ' + us.length + ' US English. Tap ▶ to hear one before choosing.'),
+          voices.length + ' voice' + (voices.length === 1 ? '' : 's') + ' installed. Tap ▶ to hear one before choosing.'),
         h('div', { className: 'tabs small', style: { marginTop: '8px' } }, filters.map(function (f) {
           return h('button', { key: f[0], className: filter === f[0] ? 'on' : '', onClick: function () { setFilter(f[0]); } }, f[1]);
         })),
