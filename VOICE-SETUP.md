@@ -1,132 +1,94 @@
-# How the voice works
+# Getting a better voice (no coding, no payment)
 
-There are three ways the app can talk. It tries them in this order, per sentence,
-and silently falls back. Nothing ever goes quiet.
+The app reads lessons out loud. By default it uses the robot voice built into the
+phone, which sounds bad. This makes it sound like a real person.
 
-    1. Your voice library   (free, your voice, needs a one-time batch job)
-    2. ElevenLabs live      (paid, your voice, optional — skip it)
-    3. Device voice         (free, robotic, works out of the box, always there)
+You do this once, on your Windows PC. It is free.
 
-Right now, with no setup at all, you are on option 3. That already works.
+## The easy way
 
-## The free way to get your own voice (option 1)
+1. Open the folder `E:\wonder-academy\voice-library`
+2. Double-click **SETUP-MY-VOICE.bat**
+3. Answer the questions it asks
+4. Leave it running, go do something else
 
-The idea: a free open-source voice cloner reads every line in the app **once, in a
-batch, on your PC or a free Google Colab GPU**, and saves the MP3s into your own
-Supabase storage. The app then plays those MP3s.
+That is it. When it finishes, it tells you what to type in the app.
 
-Nothing happens while the kids use the app. Generation only happens when you run
-the script. If a line has no MP3 yet, that line uses the device voice.
+## What it will ask you
 
-### What you do once
+**First time only**, it needs three things from Supabase. Open supabase.com and
+click your wonderacademy project:
 
-**1. Database**
-Supabase > SQL Editor > New query > paste `supabase-all-updates.sql` > Run.
-Safe to run again any time. This creates the `voice-library` storage bucket.
+| It asks for | Where to find it |
+|---|---|
+| Project URL | Left sidebar bottom → Project Settings → API |
+| service_role key | Same page, scroll to "service_role", click reveal |
+| Your user UUID | Left sidebar → Authentication → Users, next to your email |
 
-**2. Record yourself**
-15 to 30 seconds. Quiet room. Read anything, at the pace you would read a bedtime
-story. Save as `sample.wav` in the `voice-library` folder.
-(Windows Sound Recorder exports .m4a — convert with `ffmpeg -i in.m4a sample.wav`.)
+It saves these in `my-settings.txt` in that folder, so it never asks again.
 
-**3. Get three values from Supabase**
-- Project URL: Project Settings > API
-- service_role key: Project Settings > API (the secret one)
-- Your user id: Authentication > Users, the UUID next to your email
+**That service_role key is a master password for your database.** The script keeps
+it on your PC only. Never paste it into `config.js`, and never commit
+`my-settings.txt` to GitHub.
 
-**The service_role key must never go in config.js or the repo.** It only ever goes
-in your terminal or a Colab cell.
+## Then it gives you a menu
 
-**4. Export the script list**
+**Option 1 — A much better voice.** Recommended. About 15 minutes, works on any PC,
+no graphics card needed. You pick from a US woman, US man, Indian woman, Indian man,
+or Hindi woman. These are real neural voices and sound close to human.
 
-    cd E:\wonder-academy
-    node voice-library\export-content.js
+**Option 2 — Your own voice.** You record 30 seconds, it clones you. The script
+walks you through recording with the Windows Sound Recorder. Honest warning: this
+needs a decent NVIDIA graphics card. Without one it runs all night. Check with
+Win+R → `dxdiag` → Display tab. If it does not say NVIDIA, use option 1.
 
-Writes `voice-library\content.json`: 9,318 lines, 402,567 characters.
+**Option 3 — Test 5 clips.** Five minutes. Makes five clips so you can hear the
+result before committing to the full run. Start here.
 
-**5. Generate**
+## After it finishes
 
-Install once:
+On your phone or tablet:
 
-    pip install chatterbox-tts edge-tts requests
-    winget install ffmpeg
+    Parent area  →  Narrator  →  "Your own voice, free"
+    Type the name it told you (aria, or dad, or whatever you chose)
+    Tap Check, then Use library
 
-Then set your keys and run:
+Open any Science lesson. The story should be in the new voice.
 
-    cd E:\wonder-academy\voice-library
-    set SUPABASE_URL=https://juirydvjggrkhnlucwpp.supabase.co
-    set SUPABASE_SERVICE_KEY=paste_service_role_key
-    set OWNER_ID=paste_your_user_uuid
+This setting syncs to all your devices automatically. You only do it once, not
+once per phone.
 
-    python generate.py --engine chatterbox --sample sample.wav --name dad --limit 5
+## Things that are normal, not bugs
 
-Those five clips take a few minutes. Go to the app, Parent area > Narrator >
-"Your own voice, free", type `dad`, tap Check then Use library. Open a Science
-lesson. **If the first page is in your voice, it works.** If you do not like the
-quality, stop here; you have lost ten minutes, not an evening.
+**Some lines still sound robotic.** The script does story pages first, then quiz
+questions. Anything not made yet falls back to the robot voice. Run the script
+again any time to fill in more.
 
-Then run the real pass and walk away:
+**It takes hours on option 2.** Expected without a graphics card. You can close
+the window with Ctrl+C and run it again later; it picks up exactly where it
+stopped and never redoes work.
 
-    python generate.py --engine chatterbox --sample sample.wav --name dad --only page,extras,video,phrase
+**I add new lessons later.** Just double-click the .bat again. It only makes the
+new lines.
 
-That is every story page, fun fact and activity prompt: about 1,050 clips.
-Later, the quiz lines, category by category whenever you feel like it:
+## If something goes wrong
 
-    python generate.py --engine chatterbox --sample sample.wav --name dad --only question,choice --categories physics
-    python generate.py --engine chatterbox --sample sample.wav --name dad --only question,choice --categories islamic-history
+**"Python is not installed"** — open the Microsoft Store, search Python 3.12,
+click Get. Two minutes. Then run the .bat again.
 
-Stop it any time with Ctrl+C. Run it again and it skips everything already done.
+**"No library named X found" in the app** — the name in the app must exactly match
+the name the script used. The script prints it at the end.
 
-### How long
+**Nothing plays at all** — open the parent area and look for a red "Database update
+needed" banner. If it is there, run `supabase-all-updates.sql` in Supabase →
+SQL Editor first.
 
-| Your PC | Story pass (~1,050) | Everything (~9,300) |
-|---|---|---|
-| NVIDIA graphics card | about 1 hour | overnight |
-| No dedicated GPU | overnight | a few nights |
-| Free Colab T4 GPU | 1 to 2 hours, tab must stay open | 4 sessions |
+## How much space
 
-Check which you have: Win+R, type `dxdiag`, Display tab. NVIDIA GeForce or RTX
-means the fast row. Colab instructions are in `voice-library/COLAB.md`.
+The full set of voice files is roughly 300 MB. Supabase gives you 1 GB free.
 
-### If you would rather not clone your voice
+---
 
-Same script, Microsoft's free neural voices, any PC, minutes not hours. Not your
-voice, but far better than the built-in ones:
-
-    python generate.py --engine edge --voice en-US-AriaNeural --name aria
-    python generate.py --engine edge --voice en-IN-NeerjaNeural --name neerja
-    python generate.py --engine edge --voice hi-IN-SwaraNeural --name swara
-
-List them all: `edge-tts --list-voices`
-
-### Hindi
-
-Record `sample.wav` speaking Hindi, then add `--language hi --no-respell`.
-You get the English lessons read in your Hindi-accented voice. It cannot translate
-the lessons; the text stays English.
-
-## When I add new content later
-
-Run `node voice-library\export-content.js` again, then rerun the generate command.
-Only the new lines get made.
-
-## Storage
-
-The full library is roughly 300 MB. Supabase free tier gives you 1 GB.
-
-## The paid option (skip unless you want it)
-
-`tts-function.ts` plus an ElevenLabs Starter plan (~$5/month) generates lines live
-instead of in a batch, at higher quality. Setup is in the README. The free library
-above does not need this file at all, and the app works fine without it.
-
-## Troubleshooting
-
-**"No library named dad found"** — the generate script has not uploaded anything
-yet, or the name does not match. The name in the app must equal `--name`.
-
-**Kids hear the robot voice on some lines** — those lines are not generated yet.
-Expected until you finish a pass. Questions come last by design.
-
-**Nothing plays at all** — check Parent area for a red "Database update needed"
-banner. If it is there, run `supabase-all-updates.sql`.
+*There is also a paid option using ElevenLabs, set up through `tts-function.ts`.
+You do not need it and it is not recommended. The free route above covers
+everything.*

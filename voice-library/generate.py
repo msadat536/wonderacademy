@@ -105,7 +105,12 @@ class Store:
         with open(mp3_path, "rb") as f:
             r = requests.post(f"{self.url}/storage/v1/object/{BUCKET}/{self.owner}/{self.voice}/{key}.mp3", headers=hh, data=f.read())
         if r.status_code >= 300:
-            raise RuntimeError(f"upload failed {r.status_code}: {r.text[:200]}")
+            hint = ""
+            if r.status_code in (400, 404):
+                hint = "  ->  Run supabase-all-updates.sql in Supabase SQL Editor first; the voice-library bucket is missing."
+            elif r.status_code in (401, 403):
+                hint = "  ->  Check your service_role key (not the anon key)."
+            raise RuntimeError(f"upload failed {r.status_code}: {r.text[:160]}{hint}")
         self.manifest.add(key)
 
 # ---------- engines ----------
@@ -164,11 +169,22 @@ def main():
     ap.add_argument("--dry", action="store_true", help="count only, generate nothing")
     a = ap.parse_args()
 
-    url = os.environ.get("SUPABASE_URL") or DEFAULTS["SUPABASE_URL"]
-    key = os.environ.get("SUPABASE_SERVICE_KEY") or DEFAULTS["SUPABASE_SERVICE_KEY"]
-    owner = os.environ.get("OWNER_ID") or DEFAULTS["OWNER_ID"]
+    here0 = os.path.dirname(os.path.abspath(__file__))
+    saved = {}
+    cfg = os.path.join(here0, "my-settings.txt")
+    if os.path.exists(cfg):
+        for line in open(cfg, encoding="utf-8"):
+            if "=" in line:
+                k2, v2 = line.strip().split("=", 1)
+                saved[k2.strip()] = v2.strip()
+
+    url = os.environ.get("SUPABASE_URL") or saved.get("SUPABASE_URL") or DEFAULTS["SUPABASE_URL"]
+    key = os.environ.get("SUPABASE_SERVICE_KEY") or saved.get("SUPABASE_SERVICE_KEY") or DEFAULTS["SUPABASE_SERVICE_KEY"]
+    owner = os.environ.get("OWNER_ID") or saved.get("OWNER_ID") or DEFAULTS["OWNER_ID"]
     if not (url and key and owner):
-        sys.exit("Set SUPABASE_URL, SUPABASE_SERVICE_KEY and OWNER_ID (env vars or DEFAULTS in this file).")
+        sys.exit("Missing Supabase settings. Easiest fix: double-click SETUP-MY-VOICE.bat instead of running this directly.")
+    if not url.startswith("http"):
+        sys.exit("SUPABASE_URL looks wrong. It should start with https:// and end with .supabase.co")
 
     here = os.path.dirname(os.path.abspath(__file__))
     lines = json.load(open(os.path.join(here, "content.json"), encoding="utf-8"))

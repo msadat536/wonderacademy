@@ -674,6 +674,36 @@
   }
   function stopSpeak() { speakToken++; stopRecording(); stopCloud(); stopLib(); if (window.speechSynthesis) { window.speechSynthesis.cancel(); } }
 
+  /* Browsers block speech until the user has interacted with the page. The app
+     often sits idle waiting for a lesson alert, so unlock on the first touch. */
+  var speechUnlocked = false;
+  function unlockSpeech() {
+    if (speechUnlocked || !window.speechSynthesis) { return; }
+    try {
+      var u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+      speechUnlocked = true;
+    } catch (e) {}
+  }
+  if (typeof document !== 'undefined') {
+    ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
+      document.addEventListener(ev, unlockSpeech, { once: false, passive: true });
+    });
+  }
+
+  /* Say a reminder out loud. Returns false if the browser refused, so the UI
+     can show a Play button instead of failing silently. */
+  function announce(text) {
+    if (!window.speechSynthesis) { return false; }
+    try {
+      stopSpeak();
+      unlockSpeech();
+      speak(text);
+      return speechUnlocked;
+    } catch (e) { return false; }
+  }
+
   function shouldAutoRead(tier) {
     var a = getVoicePref().autoRead || 'young';
     return a === 'all' || (a === 'young' && tier === 'young');
@@ -715,46 +745,68 @@
     var state = st[0], setState = st[1];
     var remSt = React.useState(null); var reminder = remSt[0], setReminder = remSt[1];
 
-    /* Check schedules every 20 seconds while the app is open. */
+    /* Check schedules often. Uses a wide grace window instead of a narrow one,
+       because browsers throttle timers in background tabs to once a minute or
+       slower, which used to make alerts silently never fire. */
     React.useEffect(function () {
-      var t = setInterval(function () {
+      function check() {
         var list = state.data.schedule || [];
         if (!list.length || !state.data.profiles.length) { return; }
         var now = new Date();
-        var todayKey = now.toISOString().slice(0, 10);
+        var nowMs = now.getTime();
+        var todayKey = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
         var fired = {};
         try { fired = JSON.parse(localStorage.getItem('wonder_fired_' + todayKey) || '{}'); } catch (e) {}
+        var GRACE = 15 * 60000; /* still announce if we were asleep when it came due */
+
         list.forEach(function (sc) {
           if (!sc.enabled) { return; }
           var days = String(sc.days || '').split(',').map(function (d) { return parseInt(d, 10); });
           if (days.indexOf(now.getDay()) === -1) { return; }
           var hm = String(sc.time_of_day || '17:00').split(':');
-          var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hm[0], 10), parseInt(hm[1], 10), 0);
+          var target = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+            parseInt(hm[0], 10) || 0, parseInt(hm[1], 10) || 0, 0).getTime();
           var prof = null, i;
-          for (i = 0; i < state.data.profiles.length; i++) { if (state.data.profiles[i].id === sc.profile_id) { prof = state.data.profiles[i]; } }
+          for (i = 0; i < state.data.profiles.length; i++) {
+            if (state.data.profiles[i].id === sc.profile_id) { prof = state.data.profiles[i]; }
+          }
           if (!prof) { return; }
           var catTitle = sc.category !== 'any' && CONTENT[sc.category] ? CONTENT[sc.category].title : 'learning';
-          var diffMin = (target.getTime() - now.getTime()) / 60000;
           var pre = sc.remind_minutes || 15;
+          var preAt = target - pre * 60000;
+
           function fire(key, text, minutes) {
             if (fired[key]) { return; }
             fired[key] = 1;
             try { localStorage.setItem('wonder_fired_' + todayKey, JSON.stringify(fired)); } catch (e) {}
-            setReminder({ text: text, profile: prof, category: sc.category, minutes: minutes });
-            stopSpeak();
-            speak(text);
+            setReminder({ text: text, profile: prof, category: sc.category, minutes: minutes, spoken: false });
+            announce(text);
             if (window.Notification && Notification.permission === 'granted') {
-              try { new Notification('Wonder Academy', { body: text, icon: 'icon-192.png' }); } catch (e2) {}
+              try { new Notification('Wonder Academy', { body: text, icon: 'icon-192.png', tag: key }); } catch (e2) {}
             }
           }
-          if (diffMin <= pre && diffMin > pre - 0.4) {
-            fire(sc.id + ':pre', 'Hello ' + prof.name + '! Your ' + catTitle + ' lesson starts in ' + pre + ' minutes. Get ready!', pre);
-          } else if (diffMin <= 0 && diffMin > -0.4) {
+
+          /* Fire once the moment has arrived, any time within the grace window. */
+          if (nowMs >= preAt && nowMs < preAt + GRACE) {
+            fire(sc.id + ':pre', 'Hello ' + prof.name + '! Your ' + catTitle +
+              ' lesson starts in ' + pre + ' minutes. Get ready!', pre);
+          }
+          if (nowMs >= target && nowMs < target + GRACE) {
             fire(sc.id + ':now', prof.name + ', it is lesson time! Let us learn some ' + catTitle + '.', 0);
           }
         });
-      }, 20000);
-      return function () { clearInterval(t); };
+      }
+      check();
+      var t = setInterval(check, 10000);
+      /* Coming back to the app is the best moment to catch a missed alert. */
+      function onWake() { if (!document.hidden) { check(); } }
+      document.addEventListener('visibilitychange', onWake);
+      window.addEventListener('focus', onWake);
+      return function () {
+        clearInterval(t);
+        document.removeEventListener('visibilitychange', onWake);
+        window.removeEventListener('focus', onWake);
+      };
     }, [state.data.schedule, state.data.profiles]);
     var pidSt = React.useState(null);
     var pid = pidSt[0], setPid = pidSt[1];
@@ -1951,6 +2003,10 @@
     return h('div', { className: 'reminder' },
       h('div', { className: 'rem-em' }, r.minutes > 0 ? '⏰' : '🎒'),
       h('div', { className: 'fill' }, h('div', { className: 'rem-text' }, r.text)),
+      h('button', {
+        className: 'btn grape small', title: 'Hear it',
+        onClick: function () { unlockSpeech(); stopSpeak(); speak(r.text); }
+      }, '🔊'),
       h('button', { className: 'btn green small', onClick: props.onStart }, 'Start'),
       h('button', { className: 'btn plain small', onClick: props.onClose }, '✕')
     );
@@ -2064,11 +2120,27 @@
             h('button', { className: 'btn small plain', onClick: function () { props.onDeleteSchedule(sc.id, function (e) { setMsg(e || 'Removed.'); }); } }, '✕'));
         })) : null,
 
-      h('div', { className: 'actionrow', style: { marginTop: '14px' } },
-        h('button', { className: 'btn grape small', onClick: function () {
-          var p = prof || props.data.profiles[0];
-          stopSpeak(); speak('Hello ' + (p ? p.name : 'there') + '! Your Physics lesson starts in 15 minutes. Get ready!');
-        } }, '🔊 Hear the announcement'))
+      h('div', { className: 'story-card', style: { marginTop: '14px' } },
+        h('h2', null, 'Test it'),
+        h('div', { className: 'sub', style: { textAlign: 'left' } },
+          'If you hear nothing, tap anywhere on the screen first. Phones block audio until you touch the page, which is why an alert can arrive silently.'),
+        h('div', { className: 'actionrow' },
+          h('button', { className: 'btn grape small', onClick: function () {
+            var p = prof || props.data.profiles[0];
+            unlockSpeech(); stopSpeak();
+            speak('Hello ' + (p ? p.name : 'there') + '! Your Physics lesson starts in 15 minutes. Get ready!');
+          } }, '🔊 Hear the announcement'),
+          h('button', { className: 'btn small', onClick: function () {
+            var p = prof || props.data.profiles[0];
+            if (!p) { setMsg('Add a profile first.'); return; }
+            unlockSpeech();
+            var t = new Date(Date.now() + 60000);
+            var hh = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+            props.onSchedule({ profile_id: p.id, days: String(t.getDay()), time_of_day: hh,
+              category: catId, remind_minutes: 0, enabled: true }, function (e) {
+              setMsg(e || ('Test alert set for ' + hh + '. Leave the app open and wait about a minute. Delete it below afterwards.'));
+            });
+          } }, '⏱️ Fire a real test in 1 minute')))
     );
   }
 
