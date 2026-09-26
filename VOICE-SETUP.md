@@ -33,24 +33,46 @@ it on your PC only. Never paste it into `config.js`, and never commit
 
 ## Then it gives you a menu
 
-**Option 1 — A much better voice.** Recommended. About 15 minutes, works on any PC,
-no graphics card needed. You pick from a US woman, US man, Indian woman, Indian man,
-or Hindi woman. These are real neural voices and sound close to human.
+**Option 1 — A much better English voice.** Recommended. About 15 minutes, works on
+any PC, no graphics card needed. Pick a US woman, US man, Indian woman or Indian man.
+Real neural voices, close to human.
 
-**Option 2 — Your own voice.** You record 30 seconds, it clones you. The script
-walks you through recording with the Windows Sound Recorder. Honest warning: this
-needs a decent NVIDIA graphics card. Without one it runs all night. Check with
-Win+R → `dxdiag` → Display tab. If it does not say NVIDIA, use option 1.
+**Option 2 — Lessons in Hindi.** About 30 minutes, any PC. This one is different: it
+**translates every lesson into Hindi first**, then speaks the Hindi. The app also shows
+the Hindi text on screen, so the kids read what they are hearing.
 
-**Option 3 — Test 5 clips.** Five minutes. Makes five clips so you can hear the
-result before committing to the full run. Start here.
+**Option 3 — Your own voice.** You record 30 seconds, it clones you. The script walks
+you through recording with the Windows Sound Recorder. Honest warning: needs a decent
+NVIDIA graphics card. Without one it runs all night. Check with Win+R → `dxdiag` →
+Display tab. If it does not say NVIDIA, use option 1.
+
+**Option 4 — Test 5 clips.** Five minutes, so you can hear the result before
+committing to a full run. Start here.
+
+## About the Hindi option
+
+Picking a Hindi voice on its own is not enough. A Hindi voice reading English text
+just gives you English in a Hindi accent, because the lesson text is still English.
+That is why option 2 translates the text first. The audio is then genuinely Hindi,
+and the app switches the on-screen text to Hindi to match.
+
+Islamic names and terms are protected from the translator, so Allah, Quran, Makkah,
+Madinah, Muhammad, Ibrahim and so on stay correct rather than being mangled into
+something odd.
+
+Translation needs internet and is cached, so rerunning never re-translates a line
+you already did.
+
+To go back to English, just switch the library name in the app back to your English
+one (for example `aria`). Both libraries can exist at the same time; the name you
+type decides which is used.
 
 ## After it finishes
 
 On your phone or tablet:
 
     Parent area  →  Narrator  →  "Your own voice, free"
-    Type the name it told you (aria, or dad, or whatever you chose)
+    Type the name it told you (aria, hindi, dad, or whatever you chose)
     Tap Check, then Use library
 
 Open any Science lesson. The story should be in the new voice.

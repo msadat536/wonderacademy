@@ -678,3 +678,6 @@ html.force-phone .app.focus .as-item { font-size: 62px !important; }
 .memory-card.won { background: #DFF3E2; }
 @media (max-width: 420px) { .memory-grid { grid-template-columns: repeat(3, 1fr); } .memory-card { font-size: 30px; } }
 @media (min-width: 700px) { .memory-card { font-size: 48px; } .order-art { font-size: 56px; } .order-text { font-size: 16px; } }
+
+/* Devanagari and other non-Latin scripts need a little more line height */
+.tr-text { line-height: 1.75 !important; }

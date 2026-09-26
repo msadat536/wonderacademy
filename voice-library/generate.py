@@ -81,6 +81,7 @@ def key_for(voice_name, raw_text):
 class Store:
     def __init__(self, url, key, owner, voice):
         self.url = url.rstrip("/"); self.key = key; self.owner = owner; self.voice = voice
+        self.lang = ""
         self.h = {"apikey": key, "Authorization": "Bearer " + key}
         self.manifest_path = f"{owner}/{voice}/manifest.json"
         self.manifest = self.load_manifest()
@@ -95,9 +96,18 @@ class Store:
         return set()
 
     def save_manifest(self):
-        body = json.dumps({"voice": self.voice, "keys": sorted(self.manifest), "updated": time.strftime("%Y-%m-%d %H:%M")}).encode()
+        body = json.dumps({"voice": self.voice, "lang": getattr(self, "lang", ""),
+                           "keys": sorted(self.manifest),
+                           "updated": time.strftime("%Y-%m-%d %H:%M")}).encode()
         hh = dict(self.h); hh["Content-Type"] = "application/json"; hh["x-upsert"] = "true"
         r = requests.post(f"{self.url}/storage/v1/object/{BUCKET}/{self.manifest_path}", headers=hh, data=body)
+        r.raise_for_status()
+
+    def upload_json(self, filename, obj):
+        hh = dict(self.h); hh["Content-Type"] = "application/json"; hh["x-upsert"] = "true"
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        r = requests.post(f"{self.url}/storage/v1/object/{BUCKET}/{self.owner}/{self.voice}/{filename}",
+                          headers=hh, data=body)
         r.raise_for_status()
 
     def upload(self, key, mp3_path):
@@ -112,6 +122,65 @@ class Store:
                 hint = "  ->  Check your service_role key (not the anon key)."
             raise RuntimeError(f"upload failed {r.status_code}: {r.text[:160]}{hint}")
         self.manifest.add(key)
+
+# ---------- translation ----------
+LANG_NAMES = {"hi": "Hindi", "ur": "Urdu", "ar": "Arabic", "bn": "Bengali",
+              "gu": "Gujarati", "ta": "Tamil", "te": "Telugu", "mr": "Marathi",
+              "pa": "Punjabi", "es": "Spanish", "fr": "French", "de": "German"}
+
+# Words to keep as-is so the meaning is not mangled.
+KEEP = ["Allah", "Quran", "Islam", "Makkah", "Madinah", "Kaaba", "Hajj", "Zamzam",
+        "Ramadan", "Muhammad", "Ibrahim", "Ismail", "Musa", "Isa", "Nuh", "Yusuf",
+        "Dawud", "Sulaiman", "Yunus", "Ayyub", "Khadijah", "Fatimah", "Aisha",
+        "Bilal", "Jibreel", "Surah", "Hadith", "Wonder Academy"]
+
+
+class Translator:
+    """Batch translator with an on-disk cache so reruns never re-translate."""
+
+    def __init__(self, lang, here):
+        self.lang = lang
+        self.path = os.path.join(here, f"translations-{lang}.json")
+        self.cache = {}
+        if os.path.exists(self.path):
+            try:
+                self.cache = json.load(open(self.path, encoding="utf-8"))
+            except Exception:
+                self.cache = {}
+        try:
+            from deep_translator import GoogleTranslator
+            self.engine = GoogleTranslator(source="en", target=lang)
+        except ImportError:
+            sys.exit("Translation needs one extra package. Run:  pip install deep-translator")
+
+    def get(self, text):
+        key = text.strip()
+        if key in self.cache:
+            return self.cache[key]
+        protected = key
+        marks = {}
+        for i, w in enumerate(KEEP):
+            tag = f"@{i}@"
+            if re.search(r"\b" + re.escape(w) + r"\b", protected):
+                protected = re.sub(r"\b" + re.escape(w) + r"\b", tag, protected)
+                marks[tag] = w
+        for attempt in range(3):
+            try:
+                out = self.engine.translate(protected)
+                break
+            except Exception:
+                time.sleep(2 + attempt * 3)
+                out = None
+        if not out:
+            return key
+        for tag, w in marks.items():
+            out = out.replace(tag, w).replace(tag.replace("@", "＠"), w)
+        self.cache[key] = out
+        return out
+
+    def save(self):
+        json.dump(self.cache, open(self.path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
 
 # ---------- engines ----------
 def to_mp3(wav_path, mp3_path):
@@ -167,6 +236,7 @@ def main():
     ap.add_argument("--no-respell", action="store_true", help="do not respell Islamic names (use for chatterbox multilingual)")
     ap.add_argument("--limit", type=int, default=0, help="stop after N new clips (for testing)")
     ap.add_argument("--dry", action="store_true", help="count only, generate nothing")
+    ap.add_argument("--translate", default="", help="translate lessons before speaking, e.g. hi for Hindi. Requires: pip install deep-translator")
     a = ap.parse_args()
 
     here0 = os.path.dirname(os.path.abspath(__file__))
@@ -199,8 +269,18 @@ def main():
     if a.dry or not pending:
         return
 
+    tr = None
+    if a.translate:
+        lang_name = LANG_NAMES.get(a.translate, a.translate)
+        print(f"translating lessons to {lang_name} first (cached, so only new lines cost time)")
+        tr = Translator(a.translate, here)
+        store.lang = a.translate
+        if a.engine == "edge" and not a.voice.lower().startswith(a.translate):
+            print(f"  NOTE: voice '{a.voice}' is not a {lang_name} voice.")
+            print(f"        Use a {lang_name} voice or it will read {lang_name} text with an English accent.")
+
     engine = EdgeEngine(a.voice, a.rate) if a.engine == "edge" else ChatterboxEngine(a.sample, a.language)
-    respell = not a.no_respell and a.engine == "edge"
+    respell = not a.no_respell and a.engine == "edge" and not a.translate
 
     tmpdir = tempfile.mkdtemp()
     done = 0; t0 = time.time()
@@ -208,7 +288,12 @@ def main():
         k = key_for(a.name, l["text"])
         out = os.path.join(tmpdir, k + ".mp3")
         try:
-            engine.synth(spoken_form(l["text"], respell), out)
+            say = l["text"]
+            if tr:
+                say = tr.get(say)
+            else:
+                say = spoken_form(say, respell)
+            engine.synth(say, out)
             store.upload(k, out)
             os.remove(out)
             done += 1
@@ -216,12 +301,22 @@ def main():
             print("  skipped:", l["text"][:50], "->", e)
         if done and done % 25 == 0:
             store.save_manifest()
+            if tr:
+                tr.save()
             rate = (time.time() - t0) / done
             print(f"  {done}/{len(pending)} done, ~{int(rate * (len(pending) - done) / 60)} min left")
         if a.limit and done >= a.limit:
             break
     store.save_manifest()
-    print(f"finished: {done} new clips, library now {len(store.manifest)} clips. In the app: Parent area > Narrator > Free voice library > name '{a.name}'.")
+    if tr:
+        tr.save()
+        try:
+            store.upload_json("translations.json", tr.cache)
+            print(f"uploaded {len(tr.cache)} translations, so the app shows {LANG_NAMES.get(a.translate, a.translate)} on screen too")
+        except Exception as e:
+            print("could not upload translations:", e)
+    print(f"finished: {done} new clips, library now {len(store.manifest)} clips.")
+    print(f"In the app: Parent area > Narrator > 'Your own voice, free' > type '{a.name}' > Check > Use library.")
 
 if __name__ == "__main__":
     main()

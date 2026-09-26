@@ -541,7 +541,7 @@
 
   /* ---------------- free voice library (pre-generated MP3s in your Supabase storage) ---------------- */
 
-  var LIB = { name: '', keys: {}, ready: false };
+  var LIB = { name: '', keys: {}, tr: {}, ready: false, lang: '' };
   var libMem = {};
   var libAudio = null;
   var libToken = 0;
@@ -549,7 +549,7 @@
   function libOn() { return CLOUD.engine === 'library' && !!LIB.name && LIB.ready; }
 
   function loadLibrary(name, cb) {
-    LIB = { name: name || '', keys: {}, ready: false };
+    LIB = { name: name || '', keys: {}, tr: {}, ready: false, lang: '' };
     if (!name) { if (cb) { cb(); } return; }
     var sess = AUTH.getSession();
     if (!sess) { if (cb) { cb(); } return; }
@@ -559,11 +559,29 @@
         try {
           var m = JSON.parse(t);
           (m.keys || []).forEach(function (k) { LIB.keys[k] = 1; });
+          LIB.lang = m.lang || '';
           LIB.ready = true;
         } catch (e) { LIB.ready = false; }
-        if (cb) { cb(); }
+        /* Optional translation file: when the library was generated in another
+           language, show that language on screen as well as hearing it. */
+        AUTH.download('voice-library/' + sess.user_id + '/' + name + '/translations.json', function (e2, tb) {
+          if (!e2 && tb) {
+            tb.text().then(function (tt) {
+              try { LIB.tr = JSON.parse(tt) || {}; } catch (e3) { LIB.tr = {}; }
+              if (cb) { cb(); }
+            }).catch(function () { if (cb) { cb(); } });
+          } else if (cb) { cb(); }
+        });
       }).catch(function () { if (cb) { cb(); } });
     });
+  }
+
+  /* Show the translated line when the active library was built in another
+     language, so the child reads what they are hearing. */
+  function tx(text) {
+    if (!libOn() || !LIB.tr) { return text; }
+    var k = String(text || '').trim();
+    return LIB.tr[k] || text;
   }
 
   function libKey(text, cb) { hashText(LIB.name + '|' + String(text).trim(), cb); }
@@ -2493,17 +2511,17 @@
         body.funFact ? h('div', { className: 'fact-card' },
           h('div', { className: 'fact-em' }, '💡'),
           h('div', null, h('div', { className: 'fact-lbl' }, young ? 'Wow!' : 'Did you know?'),
-            h('div', { className: 'fact-text' }, body.funFact))) : null,
+            h('div', { className: 'fact-text' }, tx(body.funFact)))) : null,
         body.tryThis ? h('div', { className: 'fact-card try' },
           h('div', { className: 'fact-em' }, '🧪'),
           h('div', null, h('div', { className: 'fact-lbl' }, 'Try it at home'),
-            h('div', { className: 'fact-text' }, body.tryThis))) : null,
+            h('div', { className: 'fact-text' }, tx(body.tryThis)))) : null,
         body.words && body.words.length ? h('div', { className: 'story-card' },
           h('h2', null, '📚 New words'),
           h('div', null, body.words.map(function (w, wi) {
             return h('div', { key: wi, className: 'word-row' },
               h('span', { className: 'word-w' }, w.word),
-              h('span', { className: 'word-m' }, w.meaning));
+              h('span', { className: 'word-m' }, tx(w.meaning)));
           }))) : null,
         vid ? h('div', { className: 'video-wrap' }, h('iframe', { src: ytEmbed(vid), allowFullScreen: true, title: con.title })) : null
       );
@@ -2513,7 +2531,7 @@
         h(AnimScene, { art: p.art, big: young, tint: cat.tint, color: cat.color }),
         h('div', { className: 'story-card' + (reading ? ' reading' : '') },
           h('h2', null, con.emoji + ' ' + con.title),
-          h('p', { className: young ? 'big-text' : '' }, p.text)
+          h('p', { className: (young ? 'big-text' : '') + (libOn() && LIB.lang ? ' tr-text' : '') }, tx(p.text))
         )
       );
     }
@@ -2634,7 +2652,7 @@
       h('div', { className: 'question-card' },
         h('div', { className: 'mascot ' + (picked === null ? '' : (picked.correct ? 'happy' : 'oops')) },
           picked === null ? '🦉' : (picked.correct ? '🥳' : '🤔')),
-        h('div', { className: 'q' + (young ? ' big-q' : '') }, q.q),
+        h('div', { className: 'q' + (young ? ' big-q' : '') + (libOn() && LIB.lang ? ' tr-text' : '') }, tx(q.q)),
         h('button', { className: 'btn plain small', style: { marginTop: '10px' }, onClick: readQuestion }, '🔊 Read it'),
         h('div', { className: 'choices' + (q.choices.length > 3 ? ' four' : '') },
           plan.order.map(function (realIdx, dispIdx) {
@@ -2643,7 +2661,7 @@
               if (dispIdx === picked.dispIdx) { cls += picked.correct ? ' correct' : ' wrong'; }
               if (correctDisp !== null && dispIdx === correctDisp) { cls += ' reveal'; }
             }
-            return h('button', { key: dispIdx, className: cls, onClick: function () { choose(dispIdx); } }, q.choices[realIdx]);
+            return h('button', { key: dispIdx, className: cls, onClick: function () { choose(dispIdx); } }, tx(q.choices[realIdx]));
           })
         ),
         h('div', { className: 'feedback' },

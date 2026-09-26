@@ -72,29 +72,34 @@ echo   ============================================
 echo      WHAT DO YOU WANT?
 echo   ============================================
 echo.
-echo   [1]  A much better voice  (RECOMMENDED)
-echo        Takes about 15 minutes. Works on any PC.
+echo   [1]  A much better ENGLISH voice   (RECOMMENDED)
+echo        About 15 minutes. Works on any PC.
 echo        A real human-sounding voice, not the robot.
-echo        Pick a US, Indian, or Hindi voice.
 echo.
-echo   [2]  MY OWN voice
+echo   [2]  Lessons in HINDI
+echo        Translates every lesson to Hindi, then speaks
+echo        it in a Hindi voice. The app shows Hindi text
+echo        on screen too. About 30 minutes, any PC.
+echo.
+echo   [3]  MY OWN voice
 echo        You record 30 seconds, it clones you.
 echo        Needs a good graphics card or it runs all night.
 echo.
-echo   [3]  Just test 5 clips first (safe, 5 minutes)
+echo   [4]  Just test 5 clips first  (safe, 5 minutes)
 echo.
-echo   [4]  Quit
+echo   [5]  Quit
 echo.
-set /p CHOICE=   Type 1, 2, 3 or 4 then press Enter:
+set /p CHOICE=   Type 1 to 5 then press Enter:
 echo.
 
-if "%CHOICE%"=="4" exit /b
-if "%CHOICE%"=="3" goto TEST
-if "%CHOICE%"=="2" goto CLONE
+if "%CHOICE%"=="5" exit /b
+if "%CHOICE%"=="4" goto TEST
+if "%CHOICE%"=="3" goto CLONE
+if "%CHOICE%"=="2" goto HINDI
 if "%CHOICE%"=="1" goto NICE
 goto MENU
 
-REM ================= OPTION 1 =================
+REM ================= OPTION 1 : BETTER ENGLISH =================
 :NICE
 echo   Installing (first time only, about 2 minutes)...
 python -m pip install --quiet --upgrade edge-tts requests
@@ -105,14 +110,12 @@ echo     [1] Woman, American      (Aria)
 echo     [2] Man, American        (Guy)
 echo     [3] Woman, Indian        (Neerja)
 echo     [4] Man, Indian          (Prabhat)
-echo     [5] Woman, Hindi         (Swara)
 echo.
-set /p V=   Type 1-5 then Enter:
+set /p V=   Type 1 to 4 then Enter:
 if "%V%"=="1" (set VOICE=en-US-AriaNeural& set VNAME=aria)
 if "%V%"=="2" (set VOICE=en-US-GuyNeural& set VNAME=guy)
 if "%V%"=="3" (set VOICE=en-IN-NeerjaNeural& set VNAME=neerja)
 if "%V%"=="4" (set VOICE=en-IN-PrabhatNeural& set VNAME=prabhat)
-if "%V%"=="5" (set VOICE=hi-IN-SwaraNeural& set VNAME=swara)
 if "%VOICE%"=="" goto NICE
 echo.
 call :EXPORT
@@ -122,7 +125,30 @@ echo.
 python "%~dp0generate.py" --engine edge --voice %VOICE% --name %VNAME% --rate -8%%
 goto DONE
 
-REM ================= OPTION 2 =================
+REM ================= OPTION 2 : HINDI =================
+:HINDI
+echo   Installing (first time only, about 3 minutes)...
+python -m pip install --quiet --upgrade edge-tts requests deep-translator
+echo   [ok] Ready
+echo.
+echo   Pick a Hindi voice:
+echo     [1] Woman   (Swara)
+echo     [2] Man     (Madhur)
+echo.
+set /p HV=   Type 1 or 2 then Enter:
+if "%HV%"=="2" (set VOICE=hi-IN-MadhurNeural& set VNAME=hindi-man) else (set VOICE=hi-IN-SwaraNeural& set VNAME=hindi)
+echo.
+call :EXPORT
+echo   Step 1 of 2: translating the lessons into Hindi.
+echo   Step 2 of 2: recording them in a Hindi voice.
+echo.
+echo   Leave this window open. You can use your PC normally.
+echo   Needs internet for the translation part.
+echo.
+python "%~dp0generate.py" --engine edge --voice %VOICE% --name %VNAME% --translate hi --rate -5%%
+goto DONE
+
+REM ================= OPTION 3 : CLONE MY VOICE =================
 :CLONE
 if not exist "%~dp0sample.wav" (
   color 0E
@@ -139,7 +165,7 @@ if not exist "%~dp0sample.wav" (
   echo      %~dp0
   echo   5. Rename it to exactly:  sample
   echo.
-  echo   Then run this file again and pick 2.
+  echo   Then run this file again and pick 3.
   echo.
   start "" "%~dp0"
   pause
@@ -164,7 +190,7 @@ echo.
 python "%~dp0generate.py" --engine chatterbox --sample "%~dp0sample.wav" --name %VNAME% --only page,extras,video,phrase
 goto DONE
 
-REM ================= OPTION 3 =================
+REM ================= OPTION 4 : TEST =================
 :TEST
 python -m pip install --quiet --upgrade edge-tts requests
 call :EXPORT
@@ -181,7 +207,7 @@ echo     Open any Science lesson
 echo   ============================================
 echo.
 echo   If the first page sounds good, run this file
-echo   again and pick 1 to do all of them.
+echo   again and pick 1 or 2 to do all of them.
 echo.
 pause
 exit /b
