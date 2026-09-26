@@ -169,6 +169,39 @@
       .catch(function () { cb({ status: 0, message: 'Cannot reach storage.' }, null); });
   }
 
+  /* List what is inside a folder of a bucket. Used by the on-screen voice switch
+     so it can show only the voices that have actually been generated. */
+  function list(bucket, prefix, cb, retried) {
+    var s = getSession();
+    if (!s) { cb({ status: 401, message: 'Signed out' }, null); return; }
+    fetch(base() + '/storage/v1/object/list/' + encodeURIComponent(bucket), {
+      method: 'POST',
+      headers: {
+        'apikey': CFG.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + s.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prefix: prefix || '', limit: 200, offset: 0, delimiter: '/' })
+    })
+      .then(function (r) {
+        if ((r.status === 401 || r.status === 403) && !retried) {
+          refresh(function (err, ns) {
+            if (err || !ns) { setSession(null); cb({ status: 401, message: 'Session expired' }, null); return; }
+            list(bucket, prefix, cb, true);
+          });
+          return null;
+        }
+        return r.text().then(function (t) {
+          if (!r.ok) { cb({ status: r.status, message: t || ('storage ' + r.status) }, null); return null; }
+          var d = null;
+          try { d = JSON.parse(t); } catch (e) { d = null; }
+          cb(null, d && d.length ? d : []);
+          return null;
+        });
+      })
+      .catch(function () { cb({ status: 0, message: 'Cannot reach storage.' }, null); });
+  }
+
   function upload(bucketPath, blob, contentType, cb) { storageCall('POST', bucketPath, blob, contentType, cb); }
   function download(bucketPath, cb) { storageCall('GET', 'authenticated/' + bucketPath, null, null, cb); }
   function remove(bucketPath, cb) { storageCall('DELETE', bucketPath, null, null, cb); }
@@ -182,6 +215,7 @@
     api: api,
     upload: upload,
     download: download,
-    remove: remove
+    remove: remove,
+    list: list
   };
 })();

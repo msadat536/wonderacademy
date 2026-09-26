@@ -1,111 +1,107 @@
-# Getting a better voice (no coding, no payment)
+# Better voices, set up inside the app
 
-The app reads lessons out loud. By default it uses the robot voice built into the
-phone, which sounds bad. This makes it sound like a real person.
+No PC. No downloads. No Python. You do this from your phone.
 
-You do this once, on your Windows PC. It is free.
+## One-time: deploy the voice function
 
-## The easy way
+This is the only setup step, and it is copy and paste.
 
-1. Open the folder `E:\wonder-academy\voice-library`
-2. Double-click **SETUP-MY-VOICE.bat**
-3. Answer the questions it asks
-4. Leave it running, go do something else
+1. Supabase → SQL Editor → paste `supabase-all-updates.sql` → Run.
+   (Safe to run again. Creates the storage bucket the voices live in.)
 
-That is it. When it finishes, it tells you what to type in the app.
+2. Deploy the function. Either way works:
 
-## What it will ask you
+   **From PowerShell (easiest, no dashboard hunting):**
+   ```
+   cd E:\wonder-academy
+   powershell -ExecutionPolicy Bypass -File .\deploy-voice-function.ps1
+   ```
+   A browser opens once to sign you in to Supabase, then it deploys. No Docker.
 
-**First time only**, it needs three things from Supabase. Open supabase.com and
-click your wonderacademy project:
+   **Or from the dashboard:** Edge Functions → **Deploy a new function**
+   - Name it exactly: `voice`
+   - Delete whatever is in the editor
+   - Paste the entire contents of `voice-function.ts`
+   - Deploy
 
-| It asks for | Where to find it |
+That is it. No API key, no billing, nothing to install.
+
+## Then, in the app
+
+Parent area → **Narrator** → **Voice Studio**
+
+Pick a voice:
+
+| | |
 |---|---|
-| Project URL | Left sidebar bottom → Project Settings → API |
-| service_role key | Same page, scroll to "service_role", click reveal |
-| Your user UUID | Left sidebar → Authentication → Users, next to your email |
+| 🇺🇸 Woman, American | Aria |
+| 🇺🇸 Man, American | Guy |
+| 🇮🇳 Woman, Indian | Neerja |
+| 🇮🇳 Man, Indian | Prabhat |
+| 🇮🇳 Hindi, woman | Swara, lessons translated to Hindi |
+| 🇮🇳 Hindi, man | Madhur, lessons translated to Hindi |
 
-It saves these in `my-settings.txt` in that folder, so it never asks again.
+Then three buttons, in order:
 
-**That service_role key is a master password for your database.** The script keeps
-it on your PC only. Never paste it into `config.js`, and never commit
-`my-settings.txt` to GitHub.
+**1. Test it** — makes one clip and tells you whether it worked, and what it will
+say. Takes a few seconds. Do this first.
 
-## Then it gives you a menu
+**2. Make the voices** — generates everything. A progress bar shows how far along
+it is. Keep the app open, but you can put the phone down. You can Stop at any
+point and pick up later; it never redoes finished work.
 
-**Option 1 — A much better English voice.** Recommended. About 15 minutes, works on
-any PC, no graphics card needed. Pick a US woman, US man, Indian woman or Indian man.
-Real neural voices, close to human.
+**3. Use this voice** — switches the app over. This syncs to every device, so you
+only do it once, not once per phone.
 
-**Option 2 — Lessons in Hindi.** About 30 minutes, any PC. This one is different: it
-**translates every lesson into Hindi first**, then speaks the Hindi. The app also shows
-the Hindi text on screen, so the kids read what they are hearing.
+There is a **Back to basic phone voice** button if you want to undo it.
 
-**Option 3 — Your own voice.** You record 30 seconds, it clones you. The script walks
-you through recording with the Windows Sound Recorder. Honest warning: needs a decent
-NVIDIA graphics card. Without one it runs all night. Check with Win+R → `dxdiag` →
-Display tab. If it does not say NVIDIA, use option 1.
+## The kids can switch it themselves
 
-**Option 4 — Test 5 clips.** Five minutes, so you can hear the result before
-committing to a full run. Start here.
+Once a voice exists, nobody needs the parent area to change it. There is a **🗣
+button** on the home screen, on every lesson page and during the quiz. Tapping it
+opens a panel with:
+
+- every voice that has been generated, plus **Phone voice** which always works
+- **🐢 Slower / 🚶 Normal / 🐇 Faster** reading speed
+- a **🔊 Try it** button so they can hear it before committing
+
+Picking a Hindi voice switches the on-screen text to Hindi at the same time, so
+Aliza can flip between English and Hindi mid-lesson. The choice saves to your
+Supabase account, so it follows them to the iPad and both phones.
+
+They can only pick from voices you have already made — the 🗣 panel never
+generates anything, so there is no way for them to run up work by tapping around.
 
 ## About the Hindi option
 
-Picking a Hindi voice on its own is not enough. A Hindi voice reading English text
-just gives you English in a Hindi accent, because the lesson text is still English.
-That is why option 2 translates the text first. The audio is then genuinely Hindi,
-and the app switches the on-screen text to Hindi to match.
+A Hindi voice reading English text just gives you English in a Hindi accent,
+because the lesson text is English. So the Hindi options **translate each lesson
+first**, then speak the Hindi, and the app switches the on-screen text to Hindi to
+match. Islamic names are protected from the translator, so Allah, Quran, Makkah,
+Muhammad and so on come back correct.
 
-Islamic names and terms are protected from the translator, so Allah, Quran, Makkah,
-Madinah, Muhammad, Ibrahim and so on stay correct rather than being mangled into
-something odd.
+## What to expect
 
-Translation needs internet and is cached, so rerunning never re-translates a line
-you already did.
+There are about 9,200 lines. Story pages are generated first, then fun facts, then
+quiz questions, so the storytelling improves early. Anything not generated yet
+still uses the basic phone voice, so nothing ever breaks mid-lesson.
 
-To go back to English, just switch the library name in the app back to your English
-one (for example `aria`). Both libraries can exist at the same time; the name you
-type decides which is used.
-
-## After it finishes
-
-On your phone or tablet:
-
-    Parent area  →  Narrator  →  "Your own voice, free"
-    Type the name it told you (aria, hindi, dad, or whatever you chose)
-    Tap Check, then Use library
-
-Open any Science lesson. The story should be in the new voice.
-
-This setting syncs to all your devices automatically. You only do it once, not
-once per phone.
-
-## Things that are normal, not bugs
-
-**Some lines still sound robotic.** The script does story pages first, then quiz
-questions. Anything not made yet falls back to the robot voice. Run the script
-again any time to fill in more.
-
-**It takes hours on option 2.** Expected without a graphics card. You can close
-the window with Ctrl+C and run it again later; it picks up exactly where it
-stopped and never redoes work.
-
-**I add new lessons later.** Just double-click the .bat again. It only makes the
-new lines.
+You can make several voices and switch between them. Generate `aria` for English
+and `hindi` for Hindi, then swap whenever you like.
 
 ## If something goes wrong
 
-**"Python is not installed"** — open the Microsoft Store, search Python 3.12,
-click Get. Two minutes. Then run the .bat again.
+**"Could not reach the voice function"** — the function is not deployed, or not
+named exactly `voice`. Check Supabase → Edge Functions.
 
-**"No library named X found" in the app** — the name in the app must exactly match
-the name the script used. The script prints it at the end.
+**Test says neither provider responded** — send me what it printed. It names the
+exact failure for both providers, which tells me what to fix.
 
-**Nothing plays at all** — open the parent area and look for a red "Database update
-needed" banner. If it is there, run `supabase-all-updates.sql` in Supabase →
-SQL Editor first.
+**Nothing plays after step 3** — open the parent area and look for a red "Database
+update needed" banner. If it is there, run `supabase-all-updates.sql`.
 
-## How much space
+## Your own cloned voice
 
-The full set of voice files is roughly 300 MB. Supabase gives you 1 GB free.
-
+Still possible, but it needs a graphics card and runs on your PC, so it is no
+longer the recommended route. If you want it, `voice-library/SETUP-MY-VOICE.bat`
+is still there and still works.

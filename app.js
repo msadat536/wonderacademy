@@ -572,6 +572,17 @@
 
   function libOn() { return CLOUD.engine === 'library' && !!LIB.name && LIB.ready; }
 
+  function clearLibrary() { LIB = { name: '', keys: {}, tr: {}, ready: false, lang: '' }; }
+
+  /* The library is pre-recorded MP3s, so the speed control has to change the
+     playback rate instead of the synthesiser rate. 0.88 is "normal". */
+  function libRate() {
+    var r = (getVoicePref().rate || 0.88) / 0.88;
+    if (r < 0.7) { r = 0.7; }
+    if (r > 1.6) { r = 1.6; }
+    return r;
+  }
+
   function loadLibrary(name, cb) {
     LIB = { name: name || '', keys: {}, tr: {}, ready: false, lang: '' };
     if (!name) { if (cb) { cb(); } return; }
@@ -648,6 +659,7 @@
         if (!url) { deviceSpeak(t, function () { setTimeout(next, 120); }); return; }
         if (libAudio) { try { libAudio.pause(); } catch (e) {} }
         libAudio = new Audio(url);
+        try { libAudio.playbackRate = libRate(); } catch (e2) {}
         libAudio.onended = function () { setTimeout(next, 220); };
         libAudio.onerror = function () { deviceSpeak(t, next); };
         libAudio.play().catch(function () { deviceSpeak(t, next); });
@@ -992,6 +1004,14 @@
         done(null);
       });
     }
+
+    /* Let the on-screen 🗣 switch save and force a repaint (the lesson text
+       changes language when a translated voice is picked). */
+    VOICEBUS.save = function (patch, cb) {
+      if (!state.session) { if (cb) { cb(null); } return; }
+      onSaveRates(patch, function (e) { if (cb) { cb(e); } });
+    };
+    VOICEBUS.bump = function () { update({ voiceTick: Date.now() }); };
 
     function onSchedule(row, done) {
       var body = { owner_id: state.session.user_id, profile_id: row.profile_id, days: row.days, time_of_day: row.time_of_day,
@@ -1962,6 +1982,7 @@
         if (i >= lines.length) {
           setBusy(false); setProg(null);
           setMsg('🎉 All done. ' + made + ' lines made. Tap "Use this voice" below.');
+          forgetVoiceLibraries();
           loadLibrary(v.id, function () {});
           return;
         }
@@ -1996,7 +2017,9 @@
           setBusy(false);
           if (e) { setMsg(e); return; }
           setCloudVoice('library', '');
-          setMsg('✅ Done. ' + count + ' lines will now play in this voice on every device.');
+          forgetVoiceLibraries();
+          setMsg('✅ Done. ' + count + ' lines will now play in this voice on every device. '
+            + 'The kids can also switch to it themselves with the 🗣 button.');
         });
       });
     }
@@ -2494,13 +2517,206 @@
     );
   }
 
+  /* ---------------- on-screen language and voice switch ---------------- */
+
+  /* Set once per render of App so any screen can save a voice change without
+     threading the callback through every component. */
+  var VOICEBUS = { save: null, bump: null };
+
+  /* Which voices have actually been generated. One storage list call, cached. */
+  var LIBFOUND = { done: false, busy: false, ids: [], waiters: [] };
+
+  function findVoiceLibraries(cb) {
+    if (LIBFOUND.done) { cb(LIBFOUND.ids); return; }
+    LIBFOUND.waiters.push(cb);
+    if (LIBFOUND.busy) { return; }
+    LIBFOUND.busy = true;
+    function finish(ids) {
+      LIBFOUND.done = true; LIBFOUND.busy = false; LIBFOUND.ids = ids;
+      var w = LIBFOUND.waiters; LIBFOUND.waiters = [];
+      w.forEach(function (f) { f(ids); });
+    }
+    var sess = AUTH.getSession();
+    if (!sess || !AUTH.list) { finish([]); return; }
+    AUTH.list('voice-library', sess.user_id + '/', function (err, rows) {
+      if (err || !rows) { finish([]); return; }
+      var ids = [];
+      rows.forEach(function (r) {
+        var n = r && r.name;
+        if (n && n.indexOf('.') < 0 && ids.indexOf(n) < 0) { ids.push(n); }
+      });
+      finish(ids);
+    });
+  }
+
+  function forgetVoiceLibraries() { LIBFOUND = { done: false, busy: false, ids: [], waiters: [] }; }
+
+  function studioVoiceById(id) {
+    var i;
+    for (i = 0; i < STUDIO_VOICES.length; i++) { if (STUDIO_VOICES[i].id === id) { return STUDIO_VOICES[i]; } }
+    return null;
+  }
+
+  var SPEEDS = [
+    { r: 0.74, label: '🐢 Slower' },
+    { r: 0.88, label: '🚶 Normal' },
+    { r: 1.04, label: '🐇 Faster' }
+  ];
+
+  /* A parent may have dialled in a rate that is between the three presets, so
+     highlight whichever preset is closest rather than nothing at all. */
+  function nearestSpeed(rate) {
+    var r = rate || 0.88, best = 0, bd = 99, i, d;
+    for (i = 0; i < SPEEDS.length; i++) {
+      d = Math.abs(SPEEDS[i].r - r);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+
+  /* The little 🗣 button plus its sheet. Kids can use this without the parent PIN,
+     so it only switches between voices that already exist - it never generates. */
+  function VoiceSwitch() {
+    var openSt = React.useState(false); var open = openSt[0], setOpen = openSt[1];
+    var foundSt = React.useState(null); var found = foundSt[0], setFound = foundSt[1];
+    var busySt = React.useState(''); var busy = busySt[0], setBusy = busySt[1];
+    var tickSt = React.useState(0); var tick = tickSt[0], setTick = tickSt[1];
+    var errSt = React.useState(''); var err = errSt[0], setErr = errSt[1];
+
+    React.useEffect(function () {
+      if (!open || found !== null) { return; }
+      findVoiceLibraries(function (ids) { setFound(ids); });
+    }, [open]);
+
+    var pref = getVoicePref();
+    var activeId = (CLOUD.engine === 'library' && LIB.name) ? LIB.name : '';
+
+    function finishSave() {
+      setBusy(''); setOpen(false);
+      if (VOICEBUS.bump) { VOICEBUS.bump(); }
+    }
+
+    function save(patch) {
+      if (VOICEBUS.save) { VOICEBUS.save(patch, function () { finishSave(); }); }
+      else { finishSave(); }
+    }
+
+    function pick(id) {
+      stopSpeak();
+      setErr('');
+      if (id === activeId) { setOpen(false); return; }
+      setBusy(id || 'device');
+      if (!id) {
+        setCloudVoice('device', '');
+        clearLibrary();
+        save({ voice_engine: 'device' });
+        return;
+      }
+      setCloudVoice('library', '');
+      loadLibrary(id, function () {
+        if (!LIB.ready) {
+          setBusy('');
+          setCloudVoice('device', '');
+          clearLibrary();
+          setErr('Could not load that voice. Staying on the phone voice for now.');
+          return;
+        }
+        save({ voice_engine: 'library', library_voice: id });
+      });
+    }
+
+    function setSpeed(r) {
+      var p = getVoicePref();
+      p.rate = r;
+      setVoicePref(p);
+      stopSpeak();
+      setTick(tick + 1);
+    }
+
+    function tryIt() {
+      stopSpeak();
+      setTimeout(function () { speak('Hi! This is how I will read your lesson.'); }, 60);
+    }
+
+    function row(id, emoji, title, sub) {
+      var on = activeId === id;
+      return h('button', {
+        key: id || 'device',
+        className: 'vs-row' + (on ? ' on' : ''),
+        disabled: !!busy,
+        onClick: function () { pick(id); }
+      },
+        h('span', { className: 'vs-em' }, emoji),
+        h('span', { className: 'vs-txt' },
+          h('span', { className: 'vs-title' }, title),
+          h('span', { className: 'vs-sub' }, busy === (id || 'device') ? 'Switching…' : sub)),
+        h('span', { className: 'vs-tick' }, on ? '✓' : '')
+      );
+    }
+
+    var rows = [row('', '📱', 'Phone voice', 'Always works, a bit robotic')];
+    if (found === null) {
+      rows.push(h('div', { key: 'wait', className: 'vs-wait' }, 'Looking for your voices…'));
+    } else {
+      /* If the storage listing failed for any reason, at least keep the voice that
+         is already in use switchable, so nobody gets stuck on the phone voice. */
+      var ids = found.slice();
+      if (activeId && ids.indexOf(activeId) < 0) { ids.unshift(activeId); }
+      ids.forEach(function (id) {
+        var sv = studioVoiceById(id);
+        if (sv) {
+          var parts = sv.label.split(' ');
+          rows.push(row(id, parts[0], sv.label.replace(parts[0], '').trim(),
+            sv.lang === 'hi' ? 'Lesson is translated to Hindi' : 'Natural voice'));
+        } else {
+          rows.push(row(id, '🎙', id, 'Your own recorded voice'));
+        }
+      });
+      if (!ids.length) {
+        rows.push(h('div', { key: 'none', className: 'vs-wait' },
+          'No extra voices yet. A grown-up can make them in Parent area → Narrator → Voice Studio.'));
+      }
+    }
+
+    var sheet = !open ? null : h('div', { className: 'vs-portal' },
+      h('div', { className: 'vs-back', onClick: function () { if (!busy) { setOpen(false); } } }),
+      h('div', { className: 'vs-sheet' },
+        h('div', { className: 'vs-grip' }),
+        h('h3', null, '🗣 Voice & language'),
+        h('div', { className: 'vs-list' }, rows),
+        err ? h('div', { className: 'vs-err' }, err) : null,
+        h('div', { className: 'vs-sec' }, 'Reading speed'),
+        h('div', { className: 'vs-speed' }, SPEEDS.map(function (s, si) {
+          return h('button', {
+            key: s.r,
+            className: si === nearestSpeed(pref.rate) ? 'on' : '',
+            onClick: function () { setSpeed(s.r); }
+          }, s.label);
+        })),
+        h('div', { className: 'vs-foot' },
+          h('button', { className: 'btn plain small', onClick: tryIt }, '🔊 Try it'),
+          h('button', { className: 'btn small', onClick: function () { setOpen(false); } }, 'Done')))
+    );
+
+    /* Portal to <body> so page zoom on .app (the big-text setting and the phone
+       layout guard) cannot drag the sheet off screen. */
+    return h('span', { className: 'vs-wrap' },
+      h('button', {
+        className: 'chip vs-chip', title: 'Voice and language',
+        onClick: function () { unlockSpeech(); setErr(''); setOpen(!open); }
+      }, '🗣'),
+      sheet && ReactDOM.createPortal ? ReactDOM.createPortal(sheet, document.body) : sheet
+    );
+  }
+
   /* ---------------- kid screens ---------------- */
 
   function TopBar(props) {
     return h('div', { className: 'topbar' },
       h('div', { className: 'brand' }, APP_NAME),
-      h('div', { style: { display: 'flex', gap: '8px' } },
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
         h('div', { className: 'chip stars' }, '⭐ ' + props.stars),
+        h(VoiceSwitch, null),
         h('button', { className: 'chip', onClick: props.onSwitch }, props.profile.avatar + ' ' + props.profile.name)
       )
     );
@@ -2731,6 +2947,7 @@
         h('button', { className: 'btn plain small', onClick: props.onBack }, '← Back'),
         h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
           h('div', { className: 'chip' }, cat.emoji + ' ' + cat.title),
+          h(VoiceSwitch, null),
           document.documentElement.requestFullscreen ? h('button', { className: 'chip', onClick: toggleFullscreen, title: 'Full screen' }, '⛶') : null)
       ),
       h('div', { className: 'page-dots' }, pages.map(function (_, idx) {
@@ -2830,7 +3047,9 @@
     return h('div', null,
       h('div', { className: 'backrow' },
         h('button', { className: 'btn plain small', onClick: props.onQuit }, '← Back'),
-        h('div', { className: 'chip' }, con.emoji + ' Question ' + (pos + 1) + ' of ' + qs.length)
+        h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+          h('div', { className: 'chip' }, con.emoji + ' Q' + (pos + 1) + ' of ' + qs.length),
+          h(VoiceSwitch, null))
       ),
       h('div', { className: 'qdots' }, qs.map(function (_, idx) {
         var cls = '';
