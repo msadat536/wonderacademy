@@ -69,6 +69,10 @@
           AUTH.api('kid_ledger?select=*&order=created_at.desc', 'GET', null, null, function (e4, rows3) {
             AUTH.api('kid_attempts?select=*&order=created_at.desc&limit=2000', 'GET', null, null, function (e5, rows4) {
              AUTH.api('kid_schedule?select=*', 'GET', null, null, function (e6, rows5) {
+             AUTH.api('kid_recordings?select=*', 'GET', null, null, function (e7, rows6) {
+              if (e7 && e7.status !== 401) { out.dbProblems.push('kid_recordings'); }
+              setRecordings((!e7 && rows6) ? rows6 : []);
+              out.recordings = (!e7 && rows6) ? rows6 : [];
               if (e4 && e4.status !== 401) { out.dbProblems.push('kid_ledger'); }
               if (e5 && e5.status !== 401) { out.dbProblems.push('kid_attempts'); }
               if (e6 && e6.status !== 401) { out.dbProblems.push('kid_schedule'); }
@@ -87,6 +91,7 @@
               out.loaded = true;
               saveCache(userId, { profiles: out.profiles, progress: out.progress, ledger: out.ledger, attempts: out.attempts, settings: out.settings });
               cb(null, out, false);
+             });
              });
             });
           });
@@ -341,7 +346,7 @@
   /* ---------------- speech ---------------- */
 
   function getVoicePref() {
-    var d = { name: '', rate: 0.9, pitch: 1.0, autoRead: 'young', sfx: false };
+    var d = { name: '', rate: 0.9, pitch: 1.0, autoRead: 'young', sfx: false, useRecordings: true };
     try { var r = localStorage.getItem(VOICE_KEY); if (r) { var p = JSON.parse(r), k; for (k in p) { d[k] = p[k]; } } } catch (e) {}
     return d;
   }
@@ -396,9 +401,253 @@
     return out;
   }
 
+  /* ---------------- parent recordings ---------------- */
+
+  var RECORDINGS = {};          /* key -> row */
+  var RECORDING_URLS = {};      /* key -> object URL once downloaded */
+  var recAudio = null;
+
+  function recKey(catId, conceptId, tier, pageIndex) { return catId + '/' + conceptId + '/' + tier + '/' + pageIndex; }
+  function setRecordings(rows) {
+    RECORDINGS = {};
+    (rows || []).forEach(function (r) { RECORDINGS[recKey(r.category, r.concept_id, r.tier, r.page_index)] = r; });
+  }
+  function hasRecording(key) { return !!RECORDINGS[key] && getVoicePref().useRecordings !== false; }
+
+  function fetchRecording(key, cb) {
+    if (RECORDING_URLS[key]) { cb(RECORDING_URLS[key]); return; }
+    var row = RECORDINGS[key];
+    if (!row) { cb(null); return; }
+    AUTH.download('recordings/' + row.path, function (err, blob) {
+      if (err || !blob) { cb(null); return; }
+      var url = URL.createObjectURL(blob);
+      RECORDING_URLS[key] = url;
+      cb(url);
+    });
+  }
+
+  function playRecording(key, onEnd) {
+    fetchRecording(key, function (url) {
+      if (!url) { if (onEnd) { onEnd(false); } return; }
+      if (recAudio) { try { recAudio.pause(); } catch (e) {} }
+      recAudio = new Audio(url);
+      recAudio.onended = function () { if (onEnd) { onEnd(true); } };
+      recAudio.onerror = function () { if (onEnd) { onEnd(false); } };
+      recAudio.play().catch(function () { if (onEnd) { onEnd(false); } });
+    });
+  }
+
+  function stopRecording() { if (recAudio) { try { recAudio.pause(); recAudio.currentTime = 0; } catch (e) {} recAudio = null; } }
+
+  /* ---------------- cloud voice (your cloned voice via the tts edge function) ---------------- */
+
+  var CLOUD = { engine: 'device', voiceId: '' };
+  var cloudAudio = null;
+  var cloudMem = {};
+  var cloudToken = 0;
+
+  function setCloudVoice(engine, voiceId) { CLOUD.engine = engine || 'device'; CLOUD.voiceId = voiceId || ''; }
+  function cloudOn() { return CLOUD.engine === 'cloud' && !!CLOUD.voiceId && AUTH.configured(); }
+
+  function honorificsOnly(text) {
+    var H = window.HONORIFICS ? (window.HONORIFICS[getPronSettings().honorific] || window.HONORIFICS.full) : null;
+    if (!H) { return text; }
+    return String(text)
+      .replace(/\uFDFA|ﷺ/g, H.saw)
+      .replace(/\(\s*AS\s*\)/g, H.as)
+      .replace(/\(\s*RA\s*\)/g, function (m, off, str) {
+        var before = str.slice(Math.max(0, off - 44), off);
+        return /(Khadijah|Maryam|Aisha|Fatimah|Hajar|Hawwa|Asiya|Zaynab|Hafsa)[^A-Za-z]*$/i.test(before) ? H.ra_f : H.ra_m;
+      })
+      .replace(/\s{2,}/g, ' ');
+  }
+
+  function hashText(str, cb) {
+    if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+      window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function (buf) {
+        var b = new Uint8Array(buf), o = '', i;
+        for (i = 0; i < 16; i++) { o += ('0' + b[i].toString(16)).slice(-2); }
+        cb(o);
+      }).catch(function () { cb(simpleHash(str)); });
+      return;
+    }
+    cb(simpleHash(str));
+  }
+
+  function cloudFetch(text, cb) {
+    var spoken = honorificsOnly(text);
+    var keyStr = CLOUD.voiceId + '|' + spoken;
+    hashText(keyStr, function (hash) {
+      if (cloudMem[hash]) { cb(null, cloudMem[hash]); return; }
+      var cacheUrl = 'https://wonder-tts.local/' + CLOUD.voiceId + '/' + hash;
+      function fromNetwork() {
+        var sess = AUTH.getSession();
+        if (!sess) { cb('signed out', null); return; }
+        fetch(CFG.SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/tts', {
+          method: 'POST',
+          headers: { 'apikey': CFG.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + sess.access_token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: spoken, voice_id: CLOUD.voiceId })
+        }).then(function (r) {
+          if (!r.ok) { return r.text().then(function (t) { throw new Error(t || ('tts ' + r.status)); }); }
+          return r.blob();
+        }).then(function (blob) {
+          var url = URL.createObjectURL(blob);
+          cloudMem[hash] = url;
+          if (window.caches) {
+            caches.open('wonder-tts').then(function (c) { c.put(cacheUrl, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } })); }).catch(function () {});
+          }
+          cb(null, url);
+        }).catch(function (e) { cb(e.message || 'tts failed', null); });
+      }
+      if (window.caches) {
+        caches.open('wonder-tts').then(function (c) { return c.match(cacheUrl); }).then(function (res) {
+          if (res) { return res.blob().then(function (b) { var u = URL.createObjectURL(b); cloudMem[hash] = u; cb(null, u); }); }
+          fromNetwork();
+        }).catch(fromNetwork);
+      } else { fromNetwork(); }
+    });
+  }
+
+  function cloudSpeak(text, onEnd) {
+    var token = ++cloudToken;
+    var parts = String(text).match(/[^.!?]+[.!?]+["')]?\s*|[^.!?]+$/g) || [String(text)];
+    /* Group sentences into chunks of ~600 chars so each cached MP3 is reusable and requests stay small. */
+    var chunks = [], cur = '';
+    parts.forEach(function (p) {
+      if ((cur + p).length > 600 && cur) { chunks.push(cur.trim()); cur = ''; }
+      cur += p;
+    });
+    if (cur.trim()) { chunks.push(cur.trim()); }
+    var i = 0;
+    function next() {
+      if (token !== cloudToken) { return; }
+      if (i >= chunks.length) { if (onEnd) { onEnd(); } return; }
+      var chunk = chunks[i++];
+      cloudFetch(chunk, function (err, url) {
+        if (token !== cloudToken) { return; }
+        if (err || !url) { deviceSpeak(chunk, next); return; }
+        if (cloudAudio) { try { cloudAudio.pause(); } catch (e) {} }
+        cloudAudio = new Audio(url);
+        cloudAudio.playbackRate = Math.min(1.15, Math.max(0.85, (getVoicePref().rate || 0.9) + 0.1));
+        cloudAudio.onended = function () { setTimeout(next, 200); };
+        cloudAudio.onerror = function () { deviceSpeak(chunk, next); };
+        cloudAudio.play().catch(function () { deviceSpeak(chunk, next); });
+      });
+    }
+    next();
+  }
+
+  function stopCloud() { cloudToken++; if (cloudAudio) { try { cloudAudio.pause(); } catch (e) {} cloudAudio = null; } }
+
+  /* ---------------- free voice library (pre-generated MP3s in your Supabase storage) ---------------- */
+
+  var LIB = { name: '', keys: {}, ready: false };
+  var libMem = {};
+  var libAudio = null;
+  var libToken = 0;
+
+  function libOn() { return CLOUD.engine === 'library' && !!LIB.name && LIB.ready; }
+
+  function loadLibrary(name, cb) {
+    LIB = { name: name || '', keys: {}, ready: false };
+    if (!name) { if (cb) { cb(); } return; }
+    var sess = AUTH.getSession();
+    if (!sess) { if (cb) { cb(); } return; }
+    AUTH.download('voice-library/' + sess.user_id + '/' + name + '/manifest.json', function (err, blob) {
+      if (err || !blob) { LIB.ready = false; if (cb) { cb(); } return; }
+      blob.text().then(function (t) {
+        try {
+          var m = JSON.parse(t);
+          (m.keys || []).forEach(function (k) { LIB.keys[k] = 1; });
+          LIB.ready = true;
+        } catch (e) { LIB.ready = false; }
+        if (cb) { cb(); }
+      }).catch(function () { if (cb) { cb(); } });
+    });
+  }
+
+  function libKey(text, cb) { hashText(LIB.name + '|' + String(text).trim(), cb); }
+
+  function libFetch(text, cb) {
+    libKey(text, function (k) {
+      if (!LIB.keys[k]) { cb(null); return; }
+      if (libMem[k]) { cb(libMem[k]); return; }
+      var cacheUrl = 'https://wonder-lib.local/' + LIB.name + '/' + k;
+      function fromStorage() {
+        var sess = AUTH.getSession();
+        if (!sess) { cb(null); return; }
+        AUTH.download('voice-library/' + sess.user_id + '/' + LIB.name + '/' + k + '.mp3', function (err, blob) {
+          if (err || !blob) { cb(null); return; }
+          var url = URL.createObjectURL(blob);
+          libMem[k] = url;
+          if (window.caches) { caches.open('wonder-lib').then(function (c) { c.put(cacheUrl, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } })); }).catch(function () {}); }
+          cb(url);
+        });
+      }
+      if (window.caches) {
+        caches.open('wonder-lib').then(function (c) { return c.match(cacheUrl); }).then(function (res) {
+          if (res) { return res.blob().then(function (b) { var u = URL.createObjectURL(b); libMem[k] = u; cb(u); }); }
+          fromStorage();
+        }).catch(fromStorage);
+      } else { fromStorage(); }
+    });
+  }
+
+  /* Play a sequence of texts from the library; any text without a clip falls back to the device voice. */
+  function libSpeakSeq(texts, onEnd) {
+    var token = ++libToken;
+    var i = 0;
+    function next() {
+      if (token !== libToken) { return; }
+      if (i >= texts.length) { if (onEnd) { onEnd(); } return; }
+      var t = texts[i++];
+      libFetch(t, function (url) {
+        if (token !== libToken) { return; }
+        if (!url) { deviceSpeak(t, function () { setTimeout(next, 120); }); return; }
+        if (libAudio) { try { libAudio.pause(); } catch (e) {} }
+        libAudio = new Audio(url);
+        libAudio.onended = function () { setTimeout(next, 220); };
+        libAudio.onerror = function () { deviceSpeak(t, next); };
+        libAudio.play().catch(function () { deviceSpeak(t, next); });
+      });
+    }
+    next();
+  }
+
+  function libSpeak(text, onEnd) { libSpeakSeq([String(text)], onEnd); }
+  function stopLib() { libToken++; if (libAudio) { try { libAudio.pause(); } catch (e) {} libAudio = null; } }
+
+  /* Speak a lesson page: parent's recording, else free library, else cloned cloud voice, else the device voice. */
+  function narrate(key, text, onEnd) {
+    stopSpeak();
+    if (hasRecording(key)) {
+      playRecording(key, function (ok) {
+        if (ok) { if (onEnd) { onEnd(); } }
+        else if (cloudOn()) { cloudSpeak(text, onEnd); }
+        else { speak(text, onEnd); }
+      });
+      return;
+    }
+    if (libOn()) { libSpeak(text, onEnd); return; }
+    if (cloudOn()) { cloudSpeak(text, onEnd); return; }
+    speak(text, onEnd);
+  }
+
   var speakToken = 0;
 
   function speak(text, onEnd) {
+    if (libOn()) { stopSpeak(); libSpeak(text, onEnd); return; }
+    if (cloudOn()) { stopSpeak(); cloudSpeak(text, onEnd); return; }
+    deviceSpeak(text, onEnd);
+  }
+
+  /* Speak several pieces in order (used by the quiz so each choice can be its own clip). */
+  function speakSeq(texts, onEnd) {
+    if (libOn()) { stopSpeak(); libSpeakSeq(texts, onEnd); return; }
+    speak(texts.join('. '), onEnd);
+  }
+
+  function deviceSpeak(text, onEnd) {
     if (!window.speechSynthesis) { if (onEnd) { onEnd(); } return; }
     window.speechSynthesis.cancel();
     var token = ++speakToken;
@@ -423,7 +672,7 @@
     }
     next();
   }
-  function stopSpeak() { speakToken++; if (window.speechSynthesis) { window.speechSynthesis.cancel(); } }
+  function stopSpeak() { speakToken++; stopRecording(); stopCloud(); stopLib(); if (window.speechSynthesis) { window.speechSynthesis.cancel(); } }
 
   function shouldAutoRead(tier) {
     var a = getVoicePref().autoRead || 'young';
@@ -543,6 +792,8 @@
         var data = { profiles: out.profiles, progress: out.progress, ledger: out.ledger || [], attempts: out.attempts || [], schedule: out.schedule || [] };
         var st0 = out.settings || {};
         try { setVideoMap(st0.video_map ? JSON.parse(st0.video_map) : {}); } catch (e) { setVideoMap({}); }
+        setCloudVoice(st0.voice_engine || 'device', st0.cloud_voice_id || '');
+        if ((st0.voice_engine || '') === 'library') { loadLibrary(st0.library_voice || '', null); }
         if (st0.pron_overrides || st0.honorific_mode) {
           var cur = getPronSettings();
           var ov = cur.overrides;
@@ -1034,7 +1285,7 @@
       tab === 'schedule' ? h(ScheduleTab, props) : null,
       tab === 'scores' ? h(ScoresTab, props) : null,
       tab === 'money' ? h(MoneyTab, props) : null,
-      tab === 'voice' ? h(VoiceTab, null) : null,
+      tab === 'voice' ? h(VoiceTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
       tab === 'words' ? h(WordsTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
       tab === 'videos' ? h(VideosTab, { settings: props.settings, onSaveRates: props.onSaveRates }) : null,
       tab === 'account' ? h('div', null,
@@ -1421,7 +1672,132 @@
 
   var SAMPLE = 'Once upon a time, in the city of Makkah, a boy looked up at the stars and wondered who had made them.';
 
-  function VoiceTab() {
+  var LANG_LABELS = {
+    'en-us': '🇺🇸 US English', 'en-gb': '🇬🇧 British English', 'en-in': '🇮🇳 Indian English', 'en-au': '🇦🇺 Australian English',
+    'en-ie': '🇮🇪 Irish English', 'en-za': '🇿🇦 South African English', 'en-ca': '🇨🇦 Canadian English',
+    'hi-in': '🇮🇳 Hindi', 'ur-pk': '🇵🇰 Urdu', 'ur-in': '🇮🇳 Urdu', 'ar-sa': '🇸🇦 Arabic', 'ar-eg': '🇪🇬 Arabic', 'ar-ae': '🇦🇪 Arabic',
+    'bn-in': '🇮🇳 Bengali', 'bn-bd': '🇧🇩 Bengali', 'ta-in': '🇮🇳 Tamil', 'te-in': '🇮🇳 Telugu', 'gu-in': '🇮🇳 Gujarati',
+    'mr-in': '🇮🇳 Marathi', 'pa-in': '🇮🇳 Punjabi', 'ml-in': '🇮🇳 Malayalam', 'kn-in': '🇮🇳 Kannada',
+    'es-es': '🇪🇸 Spanish', 'es-mx': '🇲🇽 Spanish', 'es-us': '🇺🇸 Spanish', 'fr-fr': '🇫🇷 French', 'de-de': '🇩🇪 German',
+    'tr-tr': '🇹🇷 Turkish', 'id-id': '🇮🇩 Indonesian', 'ms-my': '🇲🇾 Malay', 'fa-ir': '🇮🇷 Persian', 'zh-cn': '🇨🇳 Chinese', 'ja-jp': '🇯🇵 Japanese'
+  };
+  function langLabel(lang) {
+    var l = String(lang || '').replace('_', '-').toLowerCase();
+    if (LANG_LABELS[l]) { return LANG_LABELS[l]; }
+    var base = l.split('-')[0];
+    var k;
+    for (k in LANG_LABELS) { if (k.split('-')[0] === base) { return LANG_LABELS[k].replace(/^\S+\s/, '') + ' (' + lang + ')'; } }
+    return lang;
+  }
+
+  function CloudVoiceCard(props) {
+    var st = props.settings || {};
+    var engSt = React.useState(st.voice_engine || 'device'); var engine = engSt[0], setEngine = engSt[1];
+    var idSt = React.useState(st.cloud_voice_id || ''); var vid = idSt[0], setVid = idSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+
+    function save(e2, v2) {
+      setBusy(true); setMsg('');
+      props.onSaveRates({ voice_engine: e2, cloud_voice_id: v2.trim() }, function (e) {
+        setBusy(false);
+        if (e) { setMsg(e); return; }
+        setCloudVoice(e2, v2.trim());
+        setMsg(e2 === 'cloud' ? 'Saved. Your voice is now the narrator on every device.' : 'Saved. Using device voices.');
+      });
+    }
+
+    function test() {
+      if (!vid.trim()) { setMsg('Paste your Voice ID first.'); return; }
+      setBusy(true); setMsg('Generating a test sentence in your voice...');
+      var prevE = CLOUD.engine, prevV = CLOUD.voiceId;
+      setCloudVoice('cloud', vid.trim());
+      cloudSpeak('Hello! This is your voice reading a story. Once upon a time, in the city of Makkah, a boy looked up at the stars.', function () {
+        setBusy(false); setMsg('If that sounded like you, tap Use my voice.');
+        setCloudVoice(prevE, prevV);
+      });
+      setTimeout(function () { if (busy) { setBusy(false); } }, 15000);
+    }
+
+    return h('div', { className: 'story-card', style: { marginTop: '16px', background: '#FFF6D8' } },
+      h('h2', null, '🎤 Your own voice, live (paid, optional)'),
+      h('p', { style: { fontSize: '16px' } },
+        'Alternative to the free library above: generate audio live in your voice with ElevenLabs. Higher quality and no batch step, but needs a paid plan (Starter, about $5 a month) and a small function on Supabase so your key never sits in the app.\n\n' +
+        '1. At elevenlabs.io, subscribe to Starter, open Voices, Add a new voice, Instant Voice Clone. Record yourself reading anything for 1 to 2 minutes in a quiet room. Save it and copy the Voice ID.\n' +
+        '2. In ElevenLabs, Profile, API keys, create a key.\n' +
+        '3. In Supabase, Edge Functions, create a function named tts and paste in the code from the tts-function.ts file. Then Edge Functions, Secrets, add ELEVENLABS_API_KEY with your key.\n' +
+        '4. Paste the Voice ID below, tap Test, then Use my voice.'),
+      h('div', { className: 'rate-row' }, h('span', null, 'Voice ID'),
+        h('input', { className: 'rate-input', style: { width: '60%', textAlign: 'left' }, value: vid, placeholder: 'e.g. 21m00Tcm4TlvDq8ikWAM', onChange: function (e) { setVid(e.target.value); } })),
+      h('div', { className: 'tabs small', style: { marginTop: '10px' } },
+        h('button', { className: engine === 'device' ? 'on' : '', onClick: function () { setEngine('device'); save('device', vid); } }, '📱 Device voices'),
+        h('button', { className: engine === 'cloud' ? 'on' : '', disabled: !vid.trim(), onClick: function () { setEngine('cloud'); save('cloud', vid); } }, '🎤 Use my voice')),
+      h('div', { className: 'actionrow' },
+        h('button', { className: 'btn grape small', disabled: busy, onClick: test }, busy ? 'Working...' : '🔊 Test my voice'),
+        h('button', { className: 'btn plain small', onClick: stopSpeak }, 'Stop')),
+      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
+      h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7, marginTop: '6px' } },
+        'Every sentence is generated once and saved, so replaying costs nothing. Roughly 30,000 characters a month on Starter is about 25 to 40 full lessons of new material; after that the kids replay for free. You can also clone a voice speaking Hindi or Urdu by recording the sample in that language.')
+    );
+  }
+
+  function LibraryVoiceCard(props) {
+    var st = props.settings || {};
+    var nameSt = React.useState(st.library_voice || ''); var name = nameSt[0], setName = nameSt[1];
+    var msgSt = React.useState(''); var msg = msgSt[0], setMsg = msgSt[1];
+    var busySt = React.useState(false); var busy = busySt[0], setBusy = busySt[1];
+    var countSt = React.useState(LIB.ready ? Object.keys(LIB.keys).length : 0); var count = countSt[0], setCount = countSt[1];
+    var on = st.voice_engine === 'library';
+
+    function check(n, then) {
+      setBusy(true); setMsg('Looking for library "' + n + '"...');
+      loadLibrary(n, function () {
+        setBusy(false);
+        var c = LIB.ready ? Object.keys(LIB.keys).length : 0;
+        setCount(c);
+        if (!LIB.ready) { setMsg('No library named "' + n + '" found in your storage yet. Generate one first (see voice-library/COLAB.md).'); if (then) { then(false); } return; }
+        setMsg('Found ' + c + ' clips.');
+        if (then) { then(true); }
+      });
+    }
+
+    function use() {
+      var n = name.trim();
+      if (!n) { setMsg('Type the library name you used when generating.'); return; }
+      check(n, function (ok) {
+        if (!ok) { return; }
+        props.onSaveRates({ voice_engine: 'library', library_voice: n }, function (e) {
+          if (e) { setMsg(e); return; }
+          setCloudVoice('library', '');
+          setMsg('Saved. Lessons now play from your library on every device. Anything not generated yet uses the device voice.');
+        });
+      });
+    }
+
+    function off() {
+      props.onSaveRates({ voice_engine: 'device' }, function (e) {
+        if (e) { setMsg(e); return; }
+        setCloudVoice('device', ''); setMsg('Using device voices.');
+      });
+    }
+
+    return h('div', { className: 'story-card', style: { marginTop: '16px', background: '#DFF3E2' } },
+      h('h2', null, '🆓 Your own voice, free'),
+      h('p', { style: { fontSize: '16px' } },
+        'Generate every lesson in your voice once, for free, using an open-source voice cloner on a free Google Colab GPU (or free Microsoft voices on any PC). The audio is stored in your Supabase project and the app plays it. No subscription.\n\n' +
+        'Full steps are in the file voice-library/COLAB.md in the app folder. It takes an afternoon the first time. Then type the library name you chose (for example dad) here.'),
+      h('div', { className: 'rate-row' }, h('span', null, 'Library name'),
+        h('input', { className: 'rate-input', style: { width: '50%', textAlign: 'left' }, value: name, placeholder: 'dad', onChange: function (e) { setName(e.target.value); } })),
+      h('div', { className: 'actionrow' },
+        h('button', { className: 'btn plain small', disabled: busy, onClick: function () { check(name.trim(), null); } }, busy ? 'Checking...' : 'Check'),
+        h('button', { className: 'btn green small', disabled: busy || !name.trim(), onClick: use }, on ? '✓ Using library' : 'Use library'),
+        on ? h('button', { className: 'btn plain small', onClick: off } , 'Switch off') : null),
+      msg ? h('div', { className: 'sub', style: { marginTop: '8px' } }, msg) : null,
+      on && count ? h('div', { className: 'sub', style: { fontSize: '14px', opacity: .7 } }, count + ' clips ready.') : null
+    );
+  }
+
+  function VoiceTab(props) {
     var prefSt = React.useState(getVoicePref()); var pref = prefSt[0], setPref = prefSt[1];
     var uiSt = React.useState(getUiPref()); var ui = uiSt[0], setUi = uiSt[1];
     var voicesSt = React.useState(listVoices()); var voices = voicesSt[0], setVoices = voicesSt[1];
@@ -1462,13 +1838,17 @@
       stopSpeak(); speak(SAMPLE);
     }
 
-    var us = voices.filter(function (v) { return (v.lang || '').replace('_', '-').toLowerCase().indexOf('en-us') === 0; });
-    var otherEn = voices.filter(function (v) { var l = (v.lang || '').toLowerCase(); return l.indexOf('en') === 0 && l.replace('_', '-').indexOf('en-us') !== 0; });
+    function lg(v) { return (v.lang || '').replace('_', '-').toLowerCase(); }
+    var us = voices.filter(function (v) { return lg(v).indexOf('en-us') === 0; });
+    var allEn = voices.filter(function (v) { return lg(v).indexOf('en') === 0; });
     var shown;
     if (filter === 'us') { shown = us; }
-    else if (filter === 'en') { shown = us.concat(otherEn); }
-    else if (filter === 'female') { shown = us.concat(otherEn).filter(function (v) { return voiceGender(v) === 'female'; }); }
-    else if (filter === 'male') { shown = us.concat(otherEn).filter(function (v) { return voiceGender(v) === 'male'; }); }
+    else if (filter === 'en') { shown = allEn; }
+    else if (filter === 'in') { shown = voices.filter(function (v) { return lg(v) === 'en-in'; }); }
+    else if (filter === 'hi') { shown = voices.filter(function (v) { return lg(v).indexOf('hi') === 0 || lg(v).indexOf('ur') === 0; }); }
+    else if (filter === 'ar') { shown = voices.filter(function (v) { return lg(v).indexOf('ar') === 0; }); }
+    else if (filter === 'female') { shown = allEn.filter(function (v) { return voiceGender(v) === 'female'; }); }
+    else if (filter === 'male') { shown = allEn.filter(function (v) { return voiceGender(v) === 'male'; }); }
     else { shown = voices; }
 
     shown = shown.slice().sort(function (a, b) {
@@ -1477,12 +1857,14 @@
       return (a.name || '').localeCompare(b.name || '');
     });
 
-    var filters = [['us', '🇺🇸 US English'], ['en', 'All English'], ['female', '👩 Female'], ['male', '👨 Male'], ['all', 'Every voice']];
+    var filters = [['us', '🇺🇸 US'], ['in', '🇮🇳 Indian English'], ['hi', 'Hindi / Urdu'], ['ar', 'Arabic'], ['en', 'All English'], ['female', '👩 Female'], ['male', '👨 Male'], ['all', 'Every language']];
 
     return h('div', null,
       h('h1', { style: { fontSize: '24px', margin: '16px 0 6px' } }, 'Narrator'),
+      h(LibraryVoiceCard, { settings: props.settings, onSaveRates: props.onSaveRates }),
+      h(CloudVoiceCard, { settings: props.settings, onSaveRates: props.onSaveRates }),
 
-      h('div', { className: 'story-card' },
+      h('div', { className: 'story-card', style: { marginTop: '16px' } },
         h('h2', null, 'Voice style'),
         h('div', { className: 'sub', style: { textAlign: 'left', marginBottom: '8px' } }, 'Quick presets. Each one plays a sample when you tap it.'),
         h('div', { className: 'tabs small' }, VOICE_PRESETS.map(function (p) {
@@ -1523,7 +1905,7 @@
                 h('button', { className: 'vplay', onClick: function () { preview(v); } }, playing === v.name ? '⏸' : '▶'),
                 h('span', { className: 'fill' },
                   h('span', { className: 'vname' }, (g === 'female' ? '👩 ' : (g === 'male' ? '👨 ' : '🗣️ ')) + v.name),
-                  h('span', { className: 'vmeta' }, v.lang + (q ? ' · ' + q : '') + (v.localService ? '' : ' · needs internet'))),
+                  h('span', { className: 'vmeta' }, langLabel(v.lang) + (q ? ' · ' + q : '') + (v.localService ? '' : ' · needs internet'))),
                 h('button', { className: 'btn small ' + (sel ? 'green' : 'plain'), onClick: function () { setP('name', v.name); } },
                   sel ? '✓ Using' : 'Use'));
             })
@@ -1534,7 +1916,8 @@
         h('p', { style: { fontSize: '17px' } },
           'Voices come from the phone or tablet, not from this app, so adding them there adds them here.\n\n' +
           'Android: Settings, then Accessibility, then Text-to-speech output. Set the engine to Speech Recognition and Synthesis from Google, tap the gear beside it, then Install voice data, then English (United States). Download the voices marked with the highest quality. Reopen this app afterwards.\n\n' +
-          'iPad: Settings, then Accessibility, then Spoken Content, then Voices, then English. Download the Enhanced or Premium versions of voices such as Samantha, Ava, Tom or Aaron. They are a large download but sound far better.')
+          'iPad: Settings, then Accessibility, then Spoken Content, then Voices, then English. Download the Enhanced or Premium versions of voices such as Samantha, Ava, Tom or Aaron. They are a large download but sound far better.\n\n' +
+          'For Indian English, Hindi, Urdu or Arabic voices: on Android install them under the same Install voice data screen, choosing English (India), Hindi, Urdu or Arabic. On iPad they are under Voices, then the language. Note the lessons are written in English, so a Hindi voice will read English with a Hindi accent; for real Hindi narration, clone your own voice speaking Hindi using the card at the top.')
       ),
 
       h('div', { className: 'story-card', style: { marginTop: '16px' } },
@@ -1979,6 +2362,7 @@
     var onExtras = extras && page === pages.length;
     var onVideo = vid && page === videoIdx;
 
+    function onExtrasIdx(p) { return extras && p === pages.length; }
     function textFor(p) {
       if (vid && p === videoIdx) { return 'Here is a video about ' + con.title + '.'; }
       if (p < pages.length) { return pages[p].text; }
@@ -1993,7 +2377,8 @@
 
     function readFrom(p) {
       setReading(true);
-      speak(textFor(p), function () {
+      var key = recKey(props.catId, con.id, tier, p < pages.length ? p : (onExtrasIdx(p) ? 'extras' : 'video'));
+      narrate(key, textFor(p), function () {
         setReading(false);
         if (readAllRef.current && p < last) {
           setPage(p + 1);
@@ -2116,7 +2501,9 @@
     var young = tier === 'young';
 
     function readQuestion() {
-      speak(q.q + '. ' + plan.order.map(function (ri, di) { return 'Option ' + (di + 1) + ': ' + q.choices[ri]; }).join('. '));
+      var seq = [q.q];
+      plan.order.forEach(function (ri, di) { seq.push('Option ' + (di + 1)); seq.push(q.choices[ri]); });
+      speakSeq(seq);
     }
     React.useEffect(function () {
       if (shouldAutoRead(tier)) { readQuestion(); }
@@ -2132,7 +2519,10 @@
       stopSpeak();
       sfx(correct ? 'good' : 'bad');
       if (shouldAutoRead(tier)) {
-        setTimeout(function () { speak(correct ? 'Yes! Great job!' : 'Good try! The answer was ' + q.choices[q.answer] + '.'); }, sfxEnabled() ? 350 : 0);
+        setTimeout(function () {
+          if (correct) { speak('Yes! Great job!'); }
+          else { speakSeq(['Good try!', 'The answer was', q.choices[q.answer]]); }
+        }, sfxEnabled() ? 350 : 0);
       }
       if (!correct) { missedRef.current = missedRef.current.concat([pos]); }
       setTimeout(function () {

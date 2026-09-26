@@ -106,6 +106,38 @@ Parent area > Rewards tab. Set how much a new star, a Smarty Badge, and a Trophy
 
 Existing Supabase projects need `supabase-update-2.sql` run once in the SQL Editor. Fresh projects get it from `supabase.sql`.
 
+
+
+## Your own voice as narrator, free
+
+No subscription. You generate every lesson in your voice once as a batch, using Chatterbox (open-source voice cloning by Resemble AI) on a free Google Colab GPU, and the MP3s live in your Supabase storage. The app plays them; anything not generated yet falls back to the device voice.
+
+Step by step instructions are in `voice-library/COLAB.md`. In short: record 15 to 30 seconds of yourself, run `node voice-library/export-content.js`, upload `generate.py`, `content.json`, `pronounce.js` and your `sample.wav` to Colab, run one command, then type the library name in Parent area > Narrator > Your own voice, free.
+
+The whole library is about 400,000 characters (9,300 clips). Story pages first (about 1,000 clips, an afternoon on Colab), questions later, category by category. Rerunning skips finished clips.
+
+No Colab? `generate.py --engine edge` uses Microsoft's free neural voices on any PC in minutes. Not your voice, but excellent, with Indian English, Hindi and Urdu options.
+
+Storage: roughly 300 MB for the full library, within Supabase's free 1 GB.
+
+## Your own voice as narrator, live (paid, optional)
+
+You record about two minutes once; the app then narrates everything in your voice. This uses ElevenLabs voice cloning behind a small Supabase Edge Function, so your API key never appears in the app or the repo.
+
+1. Run `supabase-all-updates.sql` (adds the tts-cache bucket and settings columns).
+2. elevenlabs.io: subscribe to Starter (~$5/month). Voices > Add a new voice > Instant Voice Clone. Record 1 to 2 minutes reading anything, in a quiet room, at the pace you would read to your kids. Save and copy the Voice ID. Record the sample in Hindi or Urdu if you want narration in that language.
+3. ElevenLabs > Profile > API keys > create a key.
+4. Supabase > Edge Functions > Deploy a new function > name it exactly `tts` > paste the contents of `tts-function.ts` > Deploy. Then Edge Functions > Secrets > add `ELEVENLABS_API_KEY`.
+5. App > Parent area > Narrator > Your own voice: paste the Voice ID, tap Test my voice, then Use my voice. The setting syncs to every device.
+
+Cost control: every sentence is generated once and stored in your Supabase bucket, then cached on each device too. Replays cost nothing. Starter's 30,000 credits with the Flash model covers roughly 25 to 40 full lessons of new material per month; the kids can replay unlimited. Unused credits roll over for a while.
+
+Fallback: if the function is unreachable or credits run out, the app falls back to device voices automatically.
+
+## Languages
+
+Narrator voices are grouped by language with filters for US, Indian English, Hindi/Urdu and Arabic. The lessons are written in English, so a Hindi voice reads English with an accent; for genuine Hindi narration, clone your own voice speaking Hindi.
+
 ## Narrator
 
 Parent area > Narrator tab. Pick any voice installed on that device (accent, gender), set speed and pitch, and choose when to read aloud automatically: for young profiles only, for everyone, or only when tapped. Read to me on a story reads every page through to the end, including the fun fact and new words, and only stops if you tap Stop. Voices differ by device, so set it on each tablet and phone.
@@ -194,6 +226,8 @@ The correct answer is always written first (`answer: 0`); the app shuffles the c
 | `config.js` | Your Supabase URL and key, app name. The only file you edit. |
 | `auth.js` | Sign in, sign up, token refresh, authenticated requests. |
 | `pronounce.js` | Pronunciation rules for the narrator. Edit to add words. |
+| `voice-library/` | Free voice generator: `export-content.js`, `generate.py`, `COLAB.md`. |
+| `tts-function.ts` | Supabase Edge Function for cloned-voice narration. Paste into Supabase, do not deploy to GitHub Pages. |
 | `supabase-update-2.sql` | Run once on an existing project to add the rewards ledger. |
 | `content/science.js` | Storybook pages, facts, activities, and questions for Science. |
 | `app.js` | All screens and game logic. |

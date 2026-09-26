@@ -140,12 +140,48 @@
     });
   }
 
+  /* Storage: binary upload/download with the same token refresh handling.
+     bucketPath always starts with the bucket name, e.g. 'voice-library/<uid>/<voice>/<key>.mp3' */
+  function storageCall(method, path, body, contentType, cb, retried) {
+    var s = getSession();
+    if (!s) { cb({ status: 401, message: 'Signed out' }, null); return; }
+    var headers = { 'apikey': CFG.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + s.access_token };
+    if (contentType) { headers['Content-Type'] = contentType; }
+    if (method === 'POST') { headers['x-upsert'] = 'true'; }
+    fetch(base() + '/storage/v1/object/' + path, { method: method, headers: headers, body: body || undefined })
+      .then(function (r) {
+        if ((r.status === 401 || r.status === 403) && !retried) {
+          refresh(function (err, ns) {
+            if (err || !ns) { setSession(null); cb({ status: 401, message: 'Session expired' }, null); return; }
+            storageCall(method, path, body, contentType, cb, true);
+          });
+          return null;
+        }
+        if (!r.ok) {
+          return r.text().then(function (t) {
+            cb({ status: r.status, message: t || ('storage ' + r.status) }, null);
+            return null;
+          });
+        }
+        if (method === 'GET') { return r.blob().then(function (b) { cb(null, b); return null; }); }
+        return r.text().then(function (t) { cb(null, t); return null; });
+      })
+      .catch(function () { cb({ status: 0, message: 'Cannot reach storage.' }, null); });
+  }
+
+  function upload(bucketPath, blob, contentType, cb) { storageCall('POST', bucketPath, blob, contentType, cb); }
+  function download(bucketPath, cb) { storageCall('GET', 'authenticated/' + bucketPath, null, null, cb); }
+  function remove(bucketPath, cb) { storageCall('DELETE', bucketPath, null, null, cb); }
+
   window.WA_AUTH = {
     configured: configured,
     getSession: getSession,
     signIn: signIn,
     signUp: signUp,
     signOut: signOut,
-    api: api
+    api: api,
+    upload: upload,
+    download: download,
+    remove: remove
   };
 })();

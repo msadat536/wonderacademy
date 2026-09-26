@@ -1,7 +1,7 @@
 /* Wonder Academy service worker.
    Network first, so a new version always wins. The cache is only a fallback
    for when the device is offline. Bump CACHE_VERSION on every release. */
-var CACHE_VERSION = 'wonder-v14';
+var CACHE_VERSION = 'wonder-v17';
 
 var PRECACHE = [
   './', './index.html', './styles.css', './config.js', './auth.js', './app.js',
@@ -36,6 +36,7 @@ self.addEventListener('fetch', function (e) {
   var url = new URL(req.url);
   // Never cache Supabase; kids' progress must always hit the live server.
   if (url.hostname.indexOf('supabase.co') !== -1) { return; }
+  if (url.hostname.indexOf('elevenlabs') !== -1) { return; }
 
   e.respondWith(
     fetch(req).then(function (res) {
